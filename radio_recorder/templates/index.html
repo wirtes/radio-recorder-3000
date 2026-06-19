@@ -21,7 +21,7 @@
     <label>Duration (minutes)<input name="duration_minutes" type="number" min="1" required value="{{ edit_show.duration_minutes if edit_show else 62 }}"></label>
     <label>Frequency<select name="frequency" id="frequency"><option value="weekly" {{ 'selected' if not edit_show or edit_show.frequency == 'weekly' else '' }}>Weekly</option><option value="daily" {{ 'selected' if edit_show and edit_show.frequency == 'daily' else '' }}>Daily</option><option value="weekdays" {{ 'selected' if edit_show and edit_show.frequency == 'weekdays' else '' }}>Daily Mon–Fri</option></select></label>
     <label>Weekday<select name="weekday" id="weekday-select" required><option value="" disabled {{ 'selected' if not edit_show or edit_show.weekday is none else '' }}>Select a weekday</option>{% for day in ['Monday','Tuesday','Wednesday','Thursday','Friday','Saturday','Sunday'] %}<option value="{{ loop.index0 }}" {{ 'selected' if edit_show and edit_show.weekday == loop.index0 else '' }}>{{ day }}</option>{% endfor %}</select></label>
-    <label>Start time<input name="start_time" type="time" required value="{{ edit_show.start_time if edit_show else '10:00' }}"></label>
+    <label>Start time<input name="start_time" type="time" required value="{{ edit_show.start_time if edit_show else '' }}"></label>
     <label class="artwork-upload">Artwork (JPG)
       <span class="artwork-input-row">
         <img id="artwork-preview" class="artwork-preview {{ '' if edit_show and edit_show.artwork_path else 'empty' }}" {% if edit_show and edit_show.artwork_path %}src="{{ url_for('main.show_artwork', show_id=edit_show.id) }}"{% endif %} alt="Artwork preview">

@@ -368,6 +368,7 @@ def test_navigation_and_new_defaults(tmp_path):
     })
     dashboard = client.get("/")
     assert b'value="62"' in dashboard.data
+    assert b'name="start_time" type="time" required value=""' in dashboard.data
     assert b"Select a weekday" in dashboard.data
     assert b"CONTROL ROOM" not in dashboard.data
     assert b"Catch the signal" not in dashboard.data
