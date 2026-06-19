@@ -60,11 +60,15 @@ def index():
             """
             SELECT s.*, st.station_id AS station_code, st.logo_path AS station_logo_path
             FROM shows s JOIN stations st ON st.id=s.station_id
-            ORDER BY
-                CASE WHEN s.frequency = 'weekly' THEN 1 ELSE 0 END,
-                CASE WHEN s.frequency = 'weekly' THEN s.weekday ELSE -1 END,
-                s.start_time,
-                s.name
+                ORDER BY
+                    CASE WHEN s.frequency = 'weekly' THEN 1 ELSE 0 END,
+                    CASE
+                        WHEN s.frequency != 'weekly' THEN -1
+                        WHEN s.weekday = 6 THEN 0
+                        ELSE s.weekday + 1
+                    END,
+                    s.start_time,
+                    s.name
             """
         )
     ]
@@ -339,7 +343,7 @@ def create_show():
         flash("Show scheduled.", "success")
     except Exception as exc:
         flash(f"Could not add show: {exc}", "error")
-    return redirect(url_for("main.storage_config"))
+    return redirect(url_for("main.index"))
 
 
 @bp.post("/shows/<int:show_id>/update")

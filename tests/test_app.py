@@ -53,6 +53,7 @@ def test_station_and_show_configuration(tmp_path):
         "artwork": (image_bytes, "cover.jpg"),
     }, content_type="multipart/form-data")
     assert response.status_code == 302
+    assert response.headers["Location"] == "/"
     page = client.get("/")
     assert b"Test Show" in page.data
     assert b"KVCU" in page.data
@@ -394,6 +395,7 @@ def test_shows_order_by_schedule(tmp_path):
             ("Friday Late", "weekly", "14:00", 4),
             ("Tuesday Early", "weekly", "08:00", 1),
             ("Friday Early", "weekly", "09:00", 4),
+            ("Sunday Show", "weekly", "12:00", 6),
             ("Daily Late", "daily", "11:00", None),
             ("Weekday Early", "weekdays", "07:00", None),
         ]
@@ -410,7 +412,7 @@ def test_shows_order_by_schedule(tmp_path):
 
     page = client.get("/").data
     names = [
-        b"Weekday Early", b"Daily Late", b"Tuesday Early",
+        b"Weekday Early", b"Daily Late", b"Sunday Show", b"Tuesday Early",
         b"Friday Early", b"Friday Late",
     ]
     positions = [page.index(name) for name in names]
