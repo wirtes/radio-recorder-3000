@@ -9,10 +9,10 @@ COPY requirements.txt .
 RUN pip install --no-cache-dir -r requirements.txt
 
 COPY . .
-RUN mkdir -p /data /recordings
+RUN mkdir -p /data /server-share
 
 ENV DATA_DIR=/data \
-    FINAL_DIR=/recordings \
+    FINAL_DIR=/server-share \
     PORT=8585 \
     PYTHONUNBUFFERED=1
 

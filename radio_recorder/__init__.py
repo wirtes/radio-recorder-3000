@@ -15,7 +15,7 @@ def create_app(test_config: dict | None = None) -> Flask:
     app.config.from_mapping(
         SECRET_KEY=os.environ.get("SECRET_KEY", "change-me"),
         DATA_DIR=os.environ.get("DATA_DIR", "./data"),
-        FINAL_DIR=os.environ.get("FINAL_DIR", "./recordings"),
+        FINAL_DIR=os.environ.get("FINAL_DIR", "./Music/server-share"),
         DATABASE=None,
         START_SCHEDULER=True,
     )

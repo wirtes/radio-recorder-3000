@@ -10,8 +10,9 @@ metadata, and safely delivers completed files to shared storage.
 docker compose up --build
 ```
 
-Open <http://localhost:8585>. Persistent application data is stored in `./data`
-and completed recordings in `./recordings`.
+Open <http://localhost:8585>. Persistent application data is stored in `./data`.
+Completed recordings are delivered to `./Music/server-share`, mounted inside
+the container as `/server-share`.
 
 The container's `TZ` environment variable controls schedule interpretation.
 Change it in `docker-compose.yml` if necessary.
@@ -42,3 +43,138 @@ python app.py
    Unavailable destinations retry with exponential backoff.
 
 Use **Record now** to test a show without waiting for its scheduled time.
+
+## Mount the Mac SMB share on Debian
+
+This mounts the Mac server share:
+
+- Server: `plex-server.lan`
+- Share: `Radio Rips`
+- Debian mount point: `/home/alw/code/radio-recorder-3000/Music/server-share`
+
+### 1. Install CIFS support
+
+```bash
+sudo apt update
+sudo apt install cifs-utils
+```
+
+### 2. Create the local mount directory
+
+```bash
+mkdir -p /home/alw/code/radio-recorder-3000/Music/server-share
+```
+
+### 3. Create a credentials file
+
+Create a private credentials directory:
+
+```bash
+mkdir -p /home/alw/.smbcredentials
+```
+
+Create the credentials file:
+
+```bash
+nano /home/alw/.smbcredentials/plex-server
+```
+
+Add the Mac username and password:
+
+```ini
+username=YOUR_MAC_USERNAME
+password=YOUR_MAC_PASSWORD
+```
+
+Secure the credentials file:
+
+```bash
+chmod 600 /home/alw/.smbcredentials/plex-server
+```
+
+### 4. Test the mount manually
+
+```bash
+sudo mount -t cifs "//plex-server.lan/Radio Rips" \
+  "/home/alw/code/radio-recorder-3000/Music/server-share" \
+  -o credentials=/home/alw/.smbcredentials/plex-server,uid=alw,gid=alw,vers=3.0,sec=ntlmssp,noserverino
+```
+
+Verify that the files are visible:
+
+```bash
+ls -la /home/alw/code/radio-recorder-3000/Music/server-share
+```
+
+To unmount it manually:
+
+```bash
+sudo umount /home/alw/code/radio-recorder-3000/Music/server-share
+```
+
+## Make the mount survive restarts with `/etc/fstab`
+
+### 1. Edit `/etc/fstab`
+
+```bash
+sudo nano /etc/fstab
+```
+
+Add this line:
+
+```fstab
+//plex-server.lan/Radio\040Rips /home/alw/code/radio-recorder-3000/Music/server-share cifs credentials=/home/alw/.smbcredentials/plex-server,uid=alw,gid=alw,vers=3.0,sec=ntlmssp,noserverino,_netdev,nofail,x-systemd.automount 0 0
+```
+
+Notes:
+
+- `Radio\040Rips` is the escaped form of `Radio Rips` for `/etc/fstab`.
+- `_netdev` marks it as a network mount.
+- `nofail` prevents Debian from hanging at boot if the Mac is offline.
+- `x-systemd.automount` mounts the share on first access instead of forcing it during boot.
+
+### 2. Test the `/etc/fstab` entry
+
+Unmount the manual mount if it is currently mounted:
+
+```bash
+sudo umount /home/alw/code/radio-recorder-3000/Music/server-share
+```
+
+Reload systemd and test the fstab mount:
+
+```bash
+sudo systemctl daemon-reload
+sudo mount -a
+```
+
+Access the directory to trigger the automount:
+
+```bash
+ls -la /home/alw/code/radio-recorder-3000/Music/server-share
+```
+
+### 3. Check mount status
+
+```bash
+mount | grep server-share
+```
+
+or:
+
+```bash
+findmnt /home/alw/code/radio-recorder-3000/Music/server-share
+```
+
+### 4. Reboot test
+
+```bash
+sudo reboot
+```
+
+After reboot, check the mount:
+
+```bash
+ls -la /home/alw/code/radio-recorder-3000/Music/server-share
+findmnt /home/alw/code/radio-recorder-3000/Music/server-share
+```

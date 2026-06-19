@@ -383,6 +383,23 @@ def test_navigation_and_new_defaults(tmp_path):
     assert client.get("/config/storage").status_code == 200
 
 
+def test_old_container_storage_default_migrates(tmp_path):
+    app = make_app(tmp_path)
+    with app.app_context():
+        execute(
+            "UPDATE settings SET value='/recordings' WHERE key='final_dir'"
+        )
+    app = create_app({
+        "TESTING": True,
+        "START_SCHEDULER": False,
+        "DATA_DIR": str(tmp_path / "data"),
+        "DATABASE": app.config["DATABASE"],
+        "FINAL_DIR": "/server-share",
+    })
+    page = app.test_client().get("/config/storage")
+    assert b'value="/server-share"' in page.data
+
+
 def test_shows_order_by_schedule(tmp_path):
     app = make_app(tmp_path)
     client = app.test_client()

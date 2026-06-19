@@ -106,6 +106,13 @@ def init_db(app) -> None:
             "INSERT OR IGNORE INTO settings(key, value) VALUES('final_dir', ?)",
             (str(app.config["FINAL_DIR"]),),
         )
+        if str(app.config["FINAL_DIR"]) == "/server-share":
+            db.execute(
+                """
+                UPDATE settings SET value='/server-share'
+                WHERE key='final_dir' AND value='/recordings'
+                """
+            )
         db.commit()
 
 

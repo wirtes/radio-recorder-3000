@@ -7,7 +7,7 @@ services:
     environment:
       TZ: America/Denver
       DATA_DIR: /data
-      FINAL_DIR: /recordings
+      FINAL_DIR: /server-share
     volumes:
       - ./data:/data
-      - ./recordings:/recordings
+      - ./Music/server-share:/server-share

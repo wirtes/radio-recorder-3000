@@ -8,15 +8,6 @@
 {% if active_tab == 'shows' %}
 <section class="panel wide" id="show-schedule-list">
   <div class="panel-title"><h3>Show schedule</h3></div>
-  <form class="show-filter" method="get" action="{{ url_for('main.index') }}#show-schedule-list">
-    <input type="hidden" name="tab" value="shows">
-    <label>Filter by station
-      <select name="station" onchange="this.form.submit()">
-        <option value="">All stations</option>
-        {% for station in stations %}<option value="{{ station.id }}" {{ 'selected' if station_filter == station.id else '' }}>{{ station.station_id }}</option>{% endfor %}
-      </select>
-    </label>
-  </form>
   {% if stations %}
   <form id="show-form" class="show-form {{ 'editing' if edit_show else '' }}" action="{{ url_for('main.update_show', show_id=edit_show.id) if edit_show else url_for('main.create_show') }}" method="post" enctype="multipart/form-data">
     {% if edit_show %}
@@ -39,6 +30,15 @@
       <small>{{ 'Leave empty to keep current artwork.' if edit_show and edit_show.artwork_path else '' }}</small>
     </label>
     <button>{{ 'Update show' if edit_show else 'Schedule show' }}</button>
+  </form>
+  <form class="show-filter" method="get" action="{{ url_for('main.index') }}#show-schedule-list">
+    <input type="hidden" name="tab" value="shows">
+    <label>Filter by station
+      <select name="station" onchange="this.form.submit()">
+        <option value="">All stations</option>
+        {% for station in stations %}<option value="{{ station.id }}" {{ 'selected' if station_filter == station.id else '' }}>{{ station.station_id }}</option>{% endfor %}
+      </select>
+    </label>
   </form>
   {% else %}
     <p class="empty">Configure a station from the menu before scheduling a show.</p>
