@@ -55,21 +55,29 @@ def index():
     edit_show_id = request.args.get("edit_show", type=int)
     if edit_show_id:
         edit_show = query("SELECT * FROM shows WHERE id=?", (edit_show_id,), one=True)
+    station_filter = request.args.get("station", type=int)
+    show_params: tuple = ()
+    show_where = ""
+    if station_filter:
+        show_where = "WHERE s.station_id = ?"
+        show_params = (station_filter,)
     shows = [
         dict(row) for row in query(
-            """
+            f"""
             SELECT s.*, st.station_id AS station_code, st.logo_path AS station_logo_path
             FROM shows s JOIN stations st ON st.id=s.station_id
-                ORDER BY
-                    CASE WHEN s.frequency = 'weekly' THEN 1 ELSE 0 END,
+            {show_where}
+            ORDER BY
+                CASE WHEN s.frequency = 'weekly' THEN 1 ELSE 0 END,
                     CASE
                         WHEN s.frequency != 'weekly' THEN -1
                         WHEN s.weekday = 6 THEN 0
                         ELSE s.weekday + 1
                     END,
-                    s.start_time,
-                    s.name
-            """
+                s.start_time,
+                s.name
+            """,
+            show_params,
         )
     ]
     for show in shows:
@@ -105,6 +113,7 @@ def index():
         recording_pagination=recording_pagination,
         page_sizes=PAGE_SIZES,
         active_tab=active_tab,
+        station_filter=station_filter,
         edit_show=edit_show,
     )
 

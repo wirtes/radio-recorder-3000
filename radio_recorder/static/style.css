@@ -82,6 +82,8 @@ button.danger { color:#a12b1d; }
 .edit-banner { grid-column:1/-1; display:flex; justify-content:space-between; align-items:center; padding-bottom:12px; border-bottom:1px solid var(--line); }
 .edit-banner a { color:var(--orange); font-size:12px; font-weight:900; text-transform:uppercase; }
 .show-list { margin-top:28px; }
+.show-filter { display:flex; justify-content:flex-end; margin:-8px 0 18px; }
+.show-filter label { min-width:220px; }
 .show-list article.disabled { opacity:.5; }
 .show-badge { min-width:64px; padding:8px; text-align:center; background:var(--yellow); font:900 11px monospace; }
 .show-visual { position:relative; width:68px; height:68px; flex:0 0 68px; }

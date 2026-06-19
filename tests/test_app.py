@@ -420,6 +420,48 @@ def test_shows_order_by_schedule(tmp_path):
     assert positions == sorted(positions)
 
 
+def test_show_list_filters_by_station(tmp_path):
+    app = make_app(tmp_path)
+    client = app.test_client()
+    client.post("/stations", data={
+        "station_id": "KVCU",
+        "stream_url": "https://example.test/kvcu",
+    })
+    client.post("/stations", data={
+        "station_id": "WXYZ",
+        "stream_url": "https://example.test/wxyz",
+    })
+    with app.app_context():
+        created = now_iso()
+        execute(
+            """
+            INSERT INTO shows(
+                station_id, name, duration_minutes, frequency,
+                start_time, weekday, enabled, created_at
+            ) VALUES(1, 'KVCU Show', 62, 'daily', '09:00', NULL, 1, ?)
+            """,
+            (created,),
+        )
+        execute(
+            """
+            INSERT INTO shows(
+                station_id, name, duration_minutes, frequency,
+                start_time, weekday, enabled, created_at
+            ) VALUES(2, 'WXYZ Show', 62, 'daily', '10:00', NULL, 1, ?)
+            """,
+            (created,),
+        )
+
+    all_stations = client.get("/")
+    assert b"KVCU Show" in all_stations.data
+    assert b"WXYZ Show" in all_stations.data
+
+    filtered = client.get("/?station=1")
+    assert b"KVCU Show" in filtered.data
+    assert b"WXYZ Show" not in filtered.data
+    assert b'<option value="1" selected>' in filtered.data
+
+
 def test_legacy_show_schema_migrates_without_slug(tmp_path):
     data_dir = tmp_path / "data"
     data_dir.mkdir()

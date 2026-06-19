@@ -8,12 +8,21 @@
 {% if active_tab == 'shows' %}
 <section class="panel wide" id="show-schedule-list">
   <div class="panel-title"><h3>Show schedule</h3></div>
+  <form class="show-filter" method="get" action="{{ url_for('main.index') }}#show-schedule-list">
+    <input type="hidden" name="tab" value="shows">
+    <label>Filter by station
+      <select name="station" onchange="this.form.submit()">
+        <option value="">All stations</option>
+        {% for station in stations %}<option value="{{ station.id }}" {{ 'selected' if station_filter == station.id else '' }}>{{ station.station_id }}</option>{% endfor %}
+      </select>
+    </label>
+  </form>
   {% if stations %}
   <form id="show-form" class="show-form {{ 'editing' if edit_show else '' }}" action="{{ url_for('main.update_show', show_id=edit_show.id) if edit_show else url_for('main.create_show') }}" method="post" enctype="multipart/form-data">
     {% if edit_show %}
       <div class="edit-banner">
         <strong>Editing {{ edit_show.name }}</strong>
-        <a href="{{ url_for('main.index') }}#show-form">Cancel</a>
+        <a href="{{ url_for('main.index', station=station_filter) if station_filter else url_for('main.index') }}#show-form">Cancel</a>
       </div>
     {% endif %}
     <label>Station<select name="station_id">{% for station in stations %}<option value="{{ station.id }}" {{ 'selected' if edit_show and edit_show.station_id == station.id else '' }}>{{ station.station_id }}</option>{% endfor %}</select></label>
@@ -43,7 +52,7 @@
         <span class="show-station-badge">{% if show.station_logo_path %}<img src="{{ url_for('main.station_logo', station_id=show.station_id) }}" alt="">{% endif %}<span>{{ show.station_code }}</span></span>
       </div>
       <div class="show-main"><strong>{{ show.name }}</strong><small>{{ show.schedule_description }}</small></div>
-      <a class="button quiet" href="{{ url_for('main.index', edit_show=show.id) }}#show-form">Edit</a>
+      <a class="button quiet" href="{{ url_for('main.index', edit_show=show.id, station=station_filter) if station_filter else url_for('main.index', edit_show=show.id) }}#show-form">Edit</a>
       <form action="{{ url_for('main.record_now', show_id=show.id) }}" method="post"><button class="quiet">Record now</button></form>
       <form action="{{ url_for('main.toggle_show', show_id=show.id) }}" method="post"><button class="quiet">{{ 'Pause' if show.enabled else 'Enable' }}</button></form>
       <form class="confirm-delete" data-delete-name="{{ show.name }}" data-delete-type="show" action="{{ url_for('main.delete_show', show_id=show.id) }}" method="post"><button class="quiet danger">Delete</button></form>
