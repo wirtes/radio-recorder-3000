@@ -1,9 +1,12 @@
 from __future__ import annotations
 
+import os
+import math
 from datetime import datetime, timezone
 from pathlib import Path
 from threading import Thread
 from uuid import uuid4
+from zoneinfo import ZoneInfo
 
 from flask import (
     Blueprint,
@@ -22,6 +25,23 @@ from .db import execute, now_iso, query
 from .processing import record_show
 
 bp = Blueprint("main", __name__)
+PAGE_SIZES = (10, 25, 100)
+
+
+def pagination_params(prefix: str, total: int) -> dict:
+    per_page = request.args.get(f"{prefix}_per_page", default=10, type=int)
+    if per_page not in PAGE_SIZES:
+        per_page = 10
+    pages = max(1, math.ceil(total / per_page))
+    page = request.args.get(f"{prefix}_page", default=1, type=int)
+    page = min(max(page, 1), pages)
+    return {
+        "page": page,
+        "per_page": per_page,
+        "pages": pages,
+        "total": total,
+        "offset": (page - 1) * per_page,
+    }
 
 
 @bp.get("/")
@@ -30,27 +50,57 @@ def index():
     edit_show_id = request.args.get("edit_show", type=int)
     if edit_show_id:
         edit_show = query("SELECT * FROM shows WHERE id=?", (edit_show_id,), one=True)
+    show_total = query("SELECT COUNT(*) AS count FROM shows", one=True)["count"]
+    show_pagination = pagination_params("shows", show_total)
     shows = [
         dict(row) for row in query(
             """
             SELECT s.*, st.station_id AS station_code, st.logo_path AS station_logo_path
             FROM shows s JOIN stations st ON st.id=s.station_id
             ORDER BY s.name
-            """
+            LIMIT ? OFFSET ?
+            """,
+            (show_pagination["per_page"], show_pagination["offset"]),
         )
     ]
     for show in shows:
         show["schedule_description"] = schedule_description(show)
+
+    recording_total = query(
+        "SELECT COUNT(*) AS count FROM recordings", one=True
+    )["count"]
+    recording_pagination = pagination_params("recordings", recording_total)
+    recordings = [
+        dict(row) for row in query(
+            """
+            SELECT r.*, s.name AS show_name FROM recordings r
+            JOIN shows s ON s.id=r.show_id
+            ORDER BY r.created_at DESC
+            LIMIT ? OFFSET ?
+            """,
+            (recording_pagination["per_page"], recording_pagination["offset"]),
+        )
+    ]
+    for recording in recordings:
+        recording["scheduled_display"] = display_scheduled_at(
+            recording["scheduled_at"]
+        )
+
+    station_total = query("SELECT COUNT(*) AS count FROM stations", one=True)["count"]
+    delivered_total = query(
+        "SELECT COUNT(*) AS count FROM recordings WHERE status='complete'", one=True
+    )["count"]
     return render_template(
         "index.html",
         stations=query("SELECT * FROM stations ORDER BY station_id"),
         shows=shows,
-        recordings=query(
-            """
-            SELECT r.*, s.name AS show_name FROM recordings r
-            JOIN shows s ON s.id=r.show_id ORDER BY r.created_at DESC LIMIT 30
-            """
-        ),
+        recordings=recordings,
+        show_pagination=show_pagination,
+        recording_pagination=recording_pagination,
+        page_sizes=PAGE_SIZES,
+        station_total=station_total,
+        show_total=show_total,
+        delivered_total=delivered_total,
         edit_show=edit_show,
         final_dir=query("SELECT value FROM settings WHERE key='final_dir'", one=True)["value"],
     )
@@ -59,6 +109,14 @@ def index():
 def display_time(value: str) -> str:
     parsed = datetime.strptime(value, "%H:%M")
     return parsed.strftime("%I:%M%p").lstrip("0").lower()
+
+
+def display_scheduled_at(value: str) -> str:
+    scheduled = datetime.fromisoformat(value.replace("Z", "+00:00"))
+    if scheduled.tzinfo is None:
+        scheduled = scheduled.replace(tzinfo=timezone.utc)
+    local = scheduled.astimezone(ZoneInfo(os.environ.get("TZ", "UTC")))
+    return f"{local:%Y-%m-%d} {local.strftime('%I:%M%p').lstrip('0').lower()}"
 
 
 def schedule_description(show) -> str:

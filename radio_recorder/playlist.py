@@ -84,17 +84,58 @@ def fetch_playlist(account_url: str, scheduled_at: datetime, duration_minutes: i
     account_response.raise_for_status()
     account = account_response.json()
 
-    status_response = session.get(
-        f"{base_url}/api/v1/accounts/{account['id']}/statuses",
-        params={"exclude_replies": "true", "exclude_reblogs": "true", "limit": 40},
-        timeout=20,
-    )
-    status_response.raise_for_status()
+    statuses_url = f"{base_url}/api/v1/accounts/{account['id']}/statuses"
+    base_params = {"exclude_replies": "true", "exclude_reblogs": "true"}
+    statuses: list[dict] = []
+    seen_ids: set[str] = set()
+    max_id: str | None = None
+    limit = 40
+    show_start = scheduled_at.astimezone(timezone.utc)
 
-    start = scheduled_at.astimezone(timezone.utc) - timedelta(minutes=10)
-    end = scheduled_at.astimezone(timezone.utc) + timedelta(minutes=duration_minutes + 30)
+    while True:
+        params = {**base_params, "limit": limit}
+        if max_id is not None:
+            params["max_id"] = max_id
+        status_response = session.get(statuses_url, params=params, timeout=20)
+        status_response.raise_for_status()
+        batch = status_response.json()
+        if not batch:
+            break
+
+        new_statuses = [
+            status for status in batch
+            if str(status.get("id")) not in seen_ids
+        ]
+        if not new_statuses:
+            break
+        for status in new_statuses:
+            seen_ids.add(str(status.get("id")))
+        statuses.extend(new_statuses)
+
+        dated_statuses = [
+            status for status in new_statuses if status.get("created_at")
+        ]
+        if not dated_statuses:
+            break
+        oldest = min(
+            dated_statuses,
+            key=lambda status: datetime.fromisoformat(
+                status["created_at"].replace("Z", "+00:00")
+            ),
+        )
+        oldest_created = datetime.fromisoformat(
+            oldest["created_at"].replace("Z", "+00:00")
+        )
+        if oldest_created <= show_start:
+            break
+
+        max_id = str(oldest["id"])
+        limit = 20
+
+    start = show_start - timedelta(minutes=2)
+    end = show_start + timedelta(minutes=duration_minutes + 5)
     lines: list[tuple[datetime, str]] = []
-    for status in status_response.json():
+    for status in statuses:
         if str(status.get("account", {}).get("id")) != str(account["id"]):
             continue
         created = datetime.fromisoformat(status["created_at"].replace("Z", "+00:00"))

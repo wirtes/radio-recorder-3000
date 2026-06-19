@@ -7,8 +7,10 @@ from io import BytesIO
 from PIL import Image
 
 from radio_recorder import create_app
+from radio_recorder.db import execute, now_iso
 from radio_recorder.playlist import (
     clean_status_line,
+    fetch_playlist,
     format_playlist,
     parse_account_url,
 )
@@ -146,6 +148,117 @@ def test_playlist_elapsed_times(monkeypatch):
     ]
 
 
+def test_mastodon_window_and_older_post_paging(monkeypatch):
+    monkeypatch.setenv("TZ", "UTC")
+    scheduled = datetime(2026, 6, 19, 10, 0, tzinfo=timezone.utc)
+
+    class FakeResponse:
+        def __init__(self, payload):
+            self.payload = payload
+
+        def raise_for_status(self):
+            pass
+
+        def json(self):
+            return self.payload
+
+    class FakeSession:
+        def __init__(self):
+            self.headers = {}
+            self.status_calls = []
+
+        def get(self, url, params, timeout):
+            if url.endswith("/accounts/lookup"):
+                return FakeResponse({"id": "station-account"})
+            self.status_calls.append(params.copy())
+            if len(self.status_calls) == 1:
+                return FakeResponse([
+                    {
+                        "id": "500",
+                        "created_at": "2026-06-19T11:06:00Z",
+                        "content": "11:06am Too Late",
+                        "account": {"id": "station-account"},
+                    },
+                    {
+                        "id": "400",
+                        "created_at": "2026-06-19T10:30:00Z",
+                        "content": "10:30am Middle",
+                        "account": {"id": "station-account"},
+                    },
+                ])
+            if len(self.status_calls) == 2:
+                return FakeResponse([
+                    {
+                        "id": "300",
+                        "created_at": "2026-06-19T10:10:00Z",
+                        "content": "10:10am Early",
+                        "account": {"id": "station-account"},
+                    },
+                ])
+            return FakeResponse([
+                {
+                    "id": "200",
+                    "created_at": "2026-06-19T10:00:00Z",
+                    "content": "10:00am Start",
+                    "account": {"id": "station-account"},
+                },
+                {
+                    "id": "190",
+                    "created_at": "2026-06-19T09:58:00Z",
+                    "content": "9:58am Boundary",
+                    "account": {"id": "station-account"},
+                },
+                {
+                    "id": "180",
+                    "created_at": "2026-06-19T09:57:00Z",
+                    "content": "9:57am Too Early",
+                    "account": {"id": "station-account"},
+                },
+                {
+                    "id": "170",
+                    "created_at": "2026-06-19T11:05:00Z",
+                    "content": "11:05am End Boundary",
+                    "account": {"id": "station-account"},
+                },
+            ])
+
+    fake_session = FakeSession()
+    monkeypatch.setattr(
+        "radio_recorder.playlist.requests.Session", lambda: fake_session
+    )
+
+    playlist = fetch_playlist(
+        "https://mastodon.test/@radio", scheduled, duration_minutes=60
+    )
+
+    assert fake_session.status_calls == [
+        {
+            "exclude_replies": "true",
+            "exclude_reblogs": "true",
+            "limit": 40,
+        },
+        {
+            "exclude_replies": "true",
+            "exclude_reblogs": "true",
+            "limit": 20,
+            "max_id": "400",
+        },
+        {
+            "exclude_replies": "true",
+            "exclude_reblogs": "true",
+            "limit": 20,
+            "max_id": "300",
+        },
+    ]
+    assert playlist == [
+        "0:00 Boundary",
+        "0:00 Start",
+        "0:10 Early",
+        "0:30 Middle",
+        "1:05 End Boundary",
+    ]
+
+
 def test_track_number_and_destination(tmp_path):
     when = datetime(2026, 6, 18, 10, 0)
     assert track_number(when, "daily") == 169
@@ -176,6 +289,51 @@ def test_weekday_frequency():
     assert runs_on_weekday("weekly", 4, 4)
     assert not runs_on_weekday("weekly", 4, 3)
     assert runs_on_weekday("daily", None, 6)
+
+
+def test_paginated_lists_and_recording_time_format(tmp_path, monkeypatch):
+    monkeypatch.setenv("TZ", "America/Denver")
+    app = make_app(tmp_path)
+    client = app.test_client()
+    client.post("/stations", data={
+        "station_id": "LONG-STATION-NAME",
+        "stream_url": "https://example.test/live",
+    })
+    with app.app_context():
+        for index in range(12):
+            show_id = execute(
+                """
+                INSERT INTO shows(
+                    station_id, name, duration_minutes, frequency,
+                    start_time, weekday, enabled, created_at
+                ) VALUES(1, ?, 60, 'daily', '10:00', NULL, 1, ?)
+                """,
+                (f"Show {index:02d}", now_iso()),
+            )
+            execute(
+                """
+                INSERT INTO recordings(
+                    show_id, scheduled_at, status, attempts, created_at, updated_at
+                ) VALUES(?, '2026-06-19T19:00:00+00:00', 'complete', 1, ?, ?)
+                """,
+                (show_id, now_iso(), now_iso()),
+            )
+
+    first_page = client.get("/")
+    assert first_page.data.count(b'class="show-main"') == 10
+    assert b"Page 1 of 2" in first_page.data
+    assert b"2026-06-19 1:00pm" in first_page.data
+    assert b"LONG-STATION-NAME" in first_page.data
+
+    second_pages = client.get(
+        "/?shows_page=2&shows_per_page=10&recordings_page=2&recordings_per_page=10"
+    )
+    assert second_pages.data.count(b'class="show-main"') == 2
+    assert second_pages.data.count(b"<tr><td>Show") == 2
+
+    expanded = client.get("/?shows_per_page=25&recordings_per_page=25")
+    assert expanded.data.count(b'class="show-main"') == 12
+    assert b'<option value="25" selected>' in expanded.data
 
 
 def test_legacy_show_schema_migrates_without_slug(tmp_path):
