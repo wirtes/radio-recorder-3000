@@ -1,0 +1,71 @@
+# Radio Stream Recording Application
+This is an application that records streaming radio station programs at the pre-determined times, converts to MP3 if not already MP3, adds the appropriate metadata and artwork to the recordings, files them in the appropriate location.
+
+## Features:
+ - Record Local Radio Station Streams at pre-determined time intervals
+ - Allows the configuration of Radio Station streams that can be re-used to record individual programs. Station Stream configuration include:
+   - Station ID
+   - Stream URL
+   - Mastodon Playlist Account (URL of Mastodon Account with Playlist Info) (optional)
+ - Allows the configuration of Shows to record. Shows have the following attributes:
+ 	- Station (from preconfigured List) consisting of a Station ID, Stream URL, and Playlist account
+ 	- Slug (no-space texutal unique ID for the show)
+ 	- Show Name (to be inserted into recording metadata)
+ 	- Show Duration
+ 	- Artwork file (to be inserted into recording metadata), allow upload of the artwork. jpg files only.
+ 	- Frequency (Weekly vs. Daily, default to weekly), used to determine track numbers
+ 	
+
+## File Processing
+The application should be containerized. All data should be stored in locations outside the streams. Once a recording is completely finished, it should be moved into a final storage location and working files removed once the final copy has happened. The final music file and associated txt playlist file will copied be to a shared drive, so the system should be able to successfully record and process files locally before moving the file to the final location. The final location will be configurable through the UI. if the final location is unavailable, it should retry the move at intervals.
+
+Files will be stored in a directory structure like this:
+ - Share Directory
+  - Show Name
+  	 - "Album" which is "Show Name" + " " + 4 digit year of Recording
+  	  - recording title is YYYY-MM-DD Show Name with leading zeroes in the date respected
+
+## Track Listing
+If there is a Mastodon Playlist Account set on the Station that has been recorded, use this to query the playlist from the Mastodon Playlist Account. 
+
+Search the Mastodon account set in the Mastodon Playlist for new postings by the account only
+Use the show duration and scheduled time to record the show to set a time frame to search postings
+
+
+This is sample data for a Mastodon Posting:
+
+```
+🎶 10:00am Out In A Boat by The Von Trapps from Wherever You're Not Is Here.
+1190 Mixtape
+#TheVonTrapps #1190Mixtape #Radio1190 #KVCU
+```
+For the value of the playlist from a posting like, do the following:
+ - discard the image if there is one on the Post
+  - the first line until an intentional line break is the information we're interested in
+ - remove "🎶 " if it is in the line
+
+Write each of the first lines, typically something like "10:00am Out In A Boat by The Von Trapps from Wherever You're Not Is Here" to a text file with the same name as the resulting MP3 file, but with a .txt extension. This file will always be stored with the MP3 file in the final location.
+
+
+## MP3 File metadata
+Use the contents of the playlist TXT file write metadata tags for the lyrics and any podcast episode specific information.
+
+The application writes these ID3 tags to each MP3:
+ - Title (TIT2)
+ - Artist (TPE1)
+ - Album artist (TPE2)
+ - Album (TALB)
+ - Track number (TRCK)
+ - Year (TDRC) (for weekly shows, this is the count of weeks since the first of the year, for daily shows this is the count of the days since the first of the year.)
+ - Front-cover artwork (APIC), when an artwork file exists
+ - Also add tags to be used by podcasts, especially useful for iTunes and iPod Nano 4th Generation
+ 
+For radio recordings, values resemble:
+ - Title: 2026-06-18 Show Name
+ - Artist / album artist: Show Name
+ - Album: Show Name 2026
+ - Track: day-of-year for daily shows or week-of-year for weekly shows
+ - Year: 2026
+ 
+ 
+ 
