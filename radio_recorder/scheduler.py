@@ -18,6 +18,14 @@ def _scheduled_datetime(show, now_local: datetime) -> datetime:
     return now_local.replace(hour=hour, minute=minute, second=0, microsecond=0)
 
 
+def runs_on_weekday(frequency: str, configured_weekday: int | None, weekday: int) -> bool:
+    if frequency == "weekly":
+        return configured_weekday == weekday
+    if frequency == "weekdays":
+        return weekday < 5
+    return True
+
+
 def scan_due_shows(app) -> None:
     with app.app_context():
         tz = ZoneInfo(__import__("os").environ.get("TZ", "UTC"))
@@ -25,7 +33,9 @@ def scan_due_shows(app) -> None:
         shows = query("SELECT * FROM shows WHERE enabled=1")
         for show in shows:
             scheduled = _scheduled_datetime(show, now_local)
-            if show["frequency"] == "weekly" and show["weekday"] != now_local.weekday():
+            if not runs_on_weekday(
+                show["frequency"], show["weekday"], now_local.weekday()
+            ):
                 continue
             if not (scheduled <= now_local < scheduled + timedelta(minutes=2)):
                 continue
@@ -66,4 +76,3 @@ def start_scheduler(app) -> None:
     _scheduler.add_job(retry_deliveries, "interval", minutes=1, args=[app], max_instances=1)
     _scheduler.start()
     atexit.register(lambda: _scheduler.shutdown(wait=False) if _scheduler.running else None)
-

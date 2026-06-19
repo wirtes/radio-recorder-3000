@@ -13,17 +13,17 @@ CREATE TABLE IF NOT EXISTS stations (
     station_id TEXT NOT NULL UNIQUE,
     stream_url TEXT NOT NULL,
     mastodon_url TEXT,
+    logo_path TEXT,
     created_at TEXT NOT NULL
 );
 
 CREATE TABLE IF NOT EXISTS shows (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     station_id INTEGER NOT NULL REFERENCES stations(id) ON DELETE RESTRICT,
-    slug TEXT NOT NULL UNIQUE,
     name TEXT NOT NULL,
     duration_minutes INTEGER NOT NULL CHECK(duration_minutes > 0),
     artwork_path TEXT,
-    frequency TEXT NOT NULL CHECK(frequency IN ('daily', 'weekly')),
+    frequency TEXT NOT NULL CHECK(frequency IN ('daily', 'weekdays', 'weekly')),
     start_time TEXT NOT NULL,
     weekday INTEGER CHECK(weekday BETWEEN 0 AND 6),
     enabled INTEGER NOT NULL DEFAULT 1,
@@ -62,6 +62,46 @@ def connect() -> sqlite3.Connection:
 def init_db(app) -> None:
     with app.app_context(), closing(connect()) as db:
         db.executescript(SCHEMA)
+        station_columns = {
+            row["name"] for row in db.execute("PRAGMA table_info(stations)").fetchall()
+        }
+        if "logo_path" not in station_columns:
+            db.execute("ALTER TABLE stations ADD COLUMN logo_path TEXT")
+        show_columns = {
+            row["name"] for row in db.execute("PRAGMA table_info(shows)").fetchall()
+        }
+        shows_sql = db.execute(
+            "SELECT sql FROM sqlite_master WHERE type='table' AND name='shows'"
+        ).fetchone()["sql"]
+        if "slug" in show_columns or "'weekdays'" not in shows_sql:
+            db.commit()
+            db.execute("PRAGMA foreign_keys = OFF")
+            db.executescript(
+                """
+                CREATE TABLE shows_migrated (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    station_id INTEGER NOT NULL REFERENCES stations(id) ON DELETE RESTRICT,
+                    name TEXT NOT NULL,
+                    duration_minutes INTEGER NOT NULL CHECK(duration_minutes > 0),
+                    artwork_path TEXT,
+                    frequency TEXT NOT NULL CHECK(frequency IN ('daily', 'weekdays', 'weekly')),
+                    start_time TEXT NOT NULL,
+                    weekday INTEGER CHECK(weekday BETWEEN 0 AND 6),
+                    enabled INTEGER NOT NULL DEFAULT 1,
+                    created_at TEXT NOT NULL
+                );
+                INSERT INTO shows_migrated(
+                    id, station_id, name, duration_minutes, artwork_path,
+                    frequency, start_time, weekday, enabled, created_at
+                )
+                SELECT id, station_id, name, duration_minutes, artwork_path,
+                    frequency, start_time, weekday, enabled, created_at
+                FROM shows;
+                DROP TABLE shows;
+                ALTER TABLE shows_migrated RENAME TO shows;
+                """
+            )
+            db.execute("PRAGMA foreign_keys = ON")
         db.execute(
             "INSERT OR IGNORE INTO settings(key, value) VALUES('final_dir', ?)",
             (str(app.config["FINAL_DIR"]),),
@@ -84,4 +124,3 @@ def execute(sql: str, params: tuple = ()) -> int:
         cursor = db.execute(sql, params)
         db.commit()
         return cursor.lastrowid
-

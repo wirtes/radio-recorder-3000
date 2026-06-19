@@ -25,6 +25,7 @@ def create_app(test_config: dict | None = None) -> Flask:
     data_dir = Path(app.config["DATA_DIR"]).resolve()
     data_dir.mkdir(parents=True, exist_ok=True)
     (data_dir / "artwork").mkdir(exist_ok=True)
+    (data_dir / "station-logos").mkdir(exist_ok=True)
     (data_dir / "work").mkdir(exist_ok=True)
     app.config["DATABASE"] = app.config["DATABASE"] or str(data_dir / "radio-recorder.sqlite3")
 
@@ -34,4 +35,3 @@ def create_app(test_config: dict | None = None) -> Flask:
     if app.config["START_SCHEDULER"]:
         start_scheduler(app)
     return app
-

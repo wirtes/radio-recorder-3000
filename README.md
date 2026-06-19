@@ -30,6 +30,7 @@ python app.py
 ## Recording lifecycle
 
 1. The scheduler starts a configured stream at its daily or weekly local time.
+   Shows can also run every Monday through Friday.
 2. `ffmpeg` records and encodes the stream as MP3 in local working storage.
 3. If configured, the station's Mastodon account is queried for posts in the
    show's time window. The first text line of each post becomes the playlist.

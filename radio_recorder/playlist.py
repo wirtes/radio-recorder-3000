@@ -1,8 +1,11 @@
 from __future__ import annotations
 
+import html
+import os
 import re
 from datetime import datetime, timedelta, timezone
 from urllib.parse import urlparse
+from zoneinfo import ZoneInfo
 
 import requests
 
@@ -18,9 +21,54 @@ def parse_account_url(account_url: str) -> tuple[str, str]:
 def clean_status_line(content: str) -> str | None:
     text = re.sub(r"<br\s*/?>", "\n", content, flags=re.IGNORECASE)
     text = re.sub(r"<[^>]+>", "", text)
+    text = html.unescape(text)
     first_line = next((line.strip() for line in text.splitlines() if line.strip()), "")
     first_line = re.sub(r"^🎶\s*", "", first_line).strip()
     return first_line or None
+
+
+TIME_PREFIX = re.compile(
+    r"^(?P<hour>\d{1,2}):(?P<minute>\d{2})\s*(?P<meridiem>[ap]\.?m\.?)(?=\s|$)\s*",
+    flags=re.IGNORECASE,
+)
+
+
+def elapsed_playlist_line(
+    line: str,
+    scheduled_at: datetime,
+    *,
+    first: bool = False,
+) -> str:
+    match = TIME_PREFIX.match(line)
+    if not match:
+        return line
+
+    hour = int(match.group("hour"))
+    minute = int(match.group("minute"))
+    meridiem = re.sub(r"[^apm]", "", match.group("meridiem").lower())
+    if meridiem == "pm" and hour != 12:
+        hour += 12
+    elif meridiem == "am" and hour == 12:
+        hour = 0
+
+    local_tz = ZoneInfo(os.environ.get("TZ", "UTC"))
+    show_start = scheduled_at.astimezone(local_tz)
+    entry_time = show_start.replace(hour=hour, minute=minute, second=0, microsecond=0)
+    if entry_time < show_start - timedelta(hours=12):
+        entry_time += timedelta(days=1)
+
+    elapsed_minutes = 0 if first else max(
+        0, int((entry_time - show_start).total_seconds() // 60)
+    )
+    elapsed = f"{elapsed_minutes // 60}:{elapsed_minutes % 60:02d}"
+    return f"{elapsed} {line[match.end():].strip()}".rstrip()
+
+
+def format_playlist(lines: list[str], scheduled_at: datetime) -> list[str]:
+    return [
+        elapsed_playlist_line(line, scheduled_at, first=index == 0)
+        for index, line in enumerate(lines)
+    ]
 
 
 def fetch_playlist(account_url: str, scheduled_at: datetime, duration_minutes: int) -> list[str]:
@@ -54,5 +102,4 @@ def fetch_playlist(account_url: str, scheduled_at: datetime, duration_minutes: i
             line = clean_status_line(status.get("content", ""))
             if line:
                 lines.append((created, line))
-    return [line for _, line in sorted(lines)]
-
+    return format_playlist([line for _, line in sorted(lines)], scheduled_at)

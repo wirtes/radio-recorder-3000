@@ -31,7 +31,7 @@ from .playlist import fetch_playlist
 
 
 def track_number(when: datetime, frequency: str) -> int:
-    if frequency == "daily":
+    if frequency in {"daily", "weekdays"}:
         return when.timetuple().tm_yday
     return when.isocalendar().week
 
@@ -85,7 +85,7 @@ def record_show(app, recording_id: int) -> None:
     with app.app_context():
         row = query(
             """
-            SELECT r.*, s.name, s.slug, s.duration_minutes, s.frequency, s.artwork_path,
+            SELECT r.*, s.name, s.duration_minutes, s.frequency, s.artwork_path,
                    st.stream_url, st.mastodon_url
             FROM recordings r
             JOIN shows s ON s.id = r.show_id

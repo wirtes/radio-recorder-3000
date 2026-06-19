@@ -3,6 +3,7 @@ from __future__ import annotations
 from datetime import datetime, timezone
 from pathlib import Path
 from threading import Thread
+from uuid import uuid4
 
 from flask import (
     Blueprint,
@@ -11,6 +12,7 @@ from flask import (
     redirect,
     render_template,
     request,
+    send_file,
     url_for,
 )
 from PIL import Image
@@ -24,41 +26,130 @@ bp = Blueprint("main", __name__)
 
 @bp.get("/")
 def index():
-    return render_template(
-        "index.html",
-        stations=query("SELECT * FROM stations ORDER BY station_id"),
-        shows=query(
+    edit_show = None
+    edit_show_id = request.args.get("edit_show", type=int)
+    if edit_show_id:
+        edit_show = query("SELECT * FROM shows WHERE id=?", (edit_show_id,), one=True)
+    shows = [
+        dict(row) for row in query(
             """
-            SELECT s.*, st.station_id AS station_code
+            SELECT s.*, st.station_id AS station_code, st.logo_path AS station_logo_path
             FROM shows s JOIN stations st ON st.id=s.station_id
             ORDER BY s.name
             """
-        ),
+        )
+    ]
+    for show in shows:
+        show["schedule_description"] = schedule_description(show)
+    return render_template(
+        "index.html",
+        stations=query("SELECT * FROM stations ORDER BY station_id"),
+        shows=shows,
         recordings=query(
             """
             SELECT r.*, s.name AS show_name FROM recordings r
             JOIN shows s ON s.id=r.show_id ORDER BY r.created_at DESC LIMIT 30
             """
         ),
+        edit_show=edit_show,
         final_dir=query("SELECT value FROM settings WHERE key='final_dir'", one=True)["value"],
     )
+
+
+def display_time(value: str) -> str:
+    parsed = datetime.strptime(value, "%H:%M")
+    return parsed.strftime("%I:%M%p").lstrip("0").lower()
+
+
+def schedule_description(show) -> str:
+    time_text = display_time(show["start_time"])
+    minutes = show["duration_minutes"]
+    if show["frequency"] == "weekly":
+        day = [
+            "Monday", "Tuesday", "Wednesday", "Thursday",
+            "Friday", "Saturday", "Sunday",
+        ][show["weekday"]]
+        cadence = f"Every {day}"
+    elif show["frequency"] == "weekdays":
+        cadence = "Every Monday–Friday"
+    else:
+        cadence = "Every day"
+    return f"{cadence} at {time_text} • {minutes} minutes"
 
 
 @bp.post("/stations")
 def create_station():
     try:
+        station_code = request.form["station_id"].strip()
+        logo_path = save_station_logo(request.files.get("logo"), station_code)
         execute(
-            "INSERT INTO stations(station_id, stream_url, mastodon_url, created_at) VALUES(?,?,?,?)",
+            """
+            INSERT INTO stations(
+                station_id, stream_url, mastodon_url, logo_path, created_at
+            ) VALUES(?,?,?,?,?)
+            """,
             (
-                request.form["station_id"].strip(),
+                station_code,
                 request.form["stream_url"].strip(),
                 request.form.get("mastodon_url", "").strip() or None,
+                logo_path,
                 now_iso(),
             ),
         )
         flash("Station added.", "success")
     except Exception as exc:
         flash(f"Could not add station: {exc}", "error")
+    return redirect(url_for("main.index"))
+
+
+def save_station_logo(file, station_code: str) -> str | None:
+    if not file or not file.filename:
+        return None
+    filename = secure_filename(file.filename)
+    suffix = Path(filename).suffix.lower()
+    if suffix not in {".jpg", ".jpeg", ".png", ".webp"}:
+        raise ValueError("Station logo must be a JPG, PNG, or WebP image.")
+    safe_code = secure_filename(station_code) or "station"
+    destination = (
+        Path(current_app.config["DATA_DIR"]) / "station-logos" / f"{safe_code}{suffix}"
+    )
+    file.save(destination)
+    try:
+        with Image.open(destination) as image:
+            if image.format not in {"JPEG", "PNG", "WEBP"}:
+                raise ValueError("Station logo is not a valid JPG, PNG, or WebP image.")
+            image.verify()
+    except Exception:
+        destination.unlink(missing_ok=True)
+        raise
+    return str(destination)
+
+
+@bp.get("/stations/<int:station_id>/logo")
+def station_logo(station_id: int):
+    station = query("SELECT logo_path FROM stations WHERE id=?", (station_id,), one=True)
+    if not station or not station["logo_path"] or not Path(station["logo_path"]).is_file():
+        return "", 404
+    return send_file(station["logo_path"], conditional=True)
+
+
+@bp.post("/stations/<int:station_id>/logo")
+def update_station_logo(station_id: int):
+    station = query("SELECT * FROM stations WHERE id=?", (station_id,), one=True)
+    if not station:
+        flash("Station not found.", "error")
+        return redirect(url_for("main.index"))
+    try:
+        logo_path = save_station_logo(request.files.get("logo"), station["station_id"])
+        if not logo_path:
+            raise ValueError("Choose a logo file to upload.")
+        old_logo = station["logo_path"]
+        execute("UPDATE stations SET logo_path=? WHERE id=?", (logo_path, station_id))
+        if old_logo and old_logo != logo_path:
+            Path(old_logo).unlink(missing_ok=True)
+        flash(f"{station['station_id']} logo updated.", "success")
+    except Exception as exc:
+        flash(f"Could not update station logo: {exc}", "error")
     return redirect(url_for("main.index"))
 
 
@@ -72,13 +163,15 @@ def delete_station(station_id: int):
     return redirect(url_for("main.index"))
 
 
-def save_artwork(file, slug: str) -> str | None:
+def save_artwork(file) -> str | None:
     if not file or not file.filename:
         return None
     filename = secure_filename(file.filename)
     if Path(filename).suffix.lower() not in {".jpg", ".jpeg"}:
         raise ValueError("Artwork must be a JPG file.")
-    destination = Path(current_app.config["DATA_DIR"]) / "artwork" / f"{slug}.jpg"
+    destination = (
+        Path(current_app.config["DATA_DIR"]) / "artwork" / f"{uuid4().hex}.jpg"
+    )
     file.save(destination)
     try:
         with Image.open(destination) as image:
@@ -91,26 +184,32 @@ def save_artwork(file, slug: str) -> str | None:
     return str(destination)
 
 
+@bp.get("/shows/<int:show_id>/artwork")
+def show_artwork(show_id: int):
+    show = query("SELECT artwork_path FROM shows WHERE id=?", (show_id,), one=True)
+    if not show or not show["artwork_path"] or not Path(show["artwork_path"]).is_file():
+        return "", 404
+    return send_file(show["artwork_path"], conditional=True)
+
+
 @bp.post("/shows")
 def create_show():
     try:
-        slug = request.form["slug"].strip()
         name = request.form["name"].strip()
         if "/" in name or "\\" in name or name in {".", ".."}:
             raise ValueError("Show name cannot contain path separators.")
         frequency = request.form.get("frequency", "weekly")
         weekday = int(request.form["weekday"]) if frequency == "weekly" else None
-        artwork_path = save_artwork(request.files.get("artwork"), slug)
+        artwork_path = save_artwork(request.files.get("artwork"))
         execute(
             """
             INSERT INTO shows(
-                station_id, slug, name, duration_minutes, artwork_path,
+                station_id, name, duration_minutes, artwork_path,
                 frequency, start_time, weekday, enabled, created_at
-            ) VALUES(?,?,?,?,?,?,?,?,1,?)
+            ) VALUES(?,?,?,?,?,?,?,1,?)
             """,
             (
                 int(request.form["station_id"]),
-                slug,
                 name,
                 int(request.form["duration_minutes"]),
                 artwork_path,
@@ -124,6 +223,45 @@ def create_show():
     except Exception as exc:
         flash(f"Could not add show: {exc}", "error")
     return redirect(url_for("main.index"))
+
+
+@bp.post("/shows/<int:show_id>/update")
+def update_show(show_id: int):
+    show = query("SELECT * FROM shows WHERE id=?", (show_id,), one=True)
+    if not show:
+        flash("Show not found.", "error")
+        return redirect(url_for("main.index"))
+    try:
+        name = request.form["name"].strip()
+        if "/" in name or "\\" in name or name in {".", ".."}:
+            raise ValueError("Show name cannot contain path separators.")
+        frequency = request.form.get("frequency", "weekly")
+        weekday = int(request.form["weekday"]) if frequency == "weekly" else None
+        artwork_path = save_artwork(request.files.get("artwork"))
+        if artwork_path is None:
+            artwork_path = show["artwork_path"]
+        execute(
+            """
+            UPDATE shows SET station_id=?, name=?, duration_minutes=?,
+                artwork_path=?, frequency=?, start_time=?, weekday=?
+            WHERE id=?
+            """,
+            (
+                int(request.form["station_id"]),
+                name,
+                int(request.form["duration_minutes"]),
+                artwork_path,
+                frequency,
+                request.form["start_time"],
+                weekday,
+                show_id,
+            ),
+        )
+        flash("Show updated.", "success")
+        return redirect(url_for("main.index"))
+    except Exception as exc:
+        flash(f"Could not update show: {exc}", "error")
+        return redirect(url_for("main.index", edit_show=show_id))
 
 
 @bp.post("/shows/<int:show_id>/toggle")
