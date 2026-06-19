@@ -13,11 +13,21 @@
 </head>
 <body>
   <header>
-    <div>
+    <a class="brand" href="{{ url_for('main.index') }}">
       <p class="eyebrow">AUTOMATED BROADCAST ARCHIVE</p>
       <h1>Radio Recorder <span>3000</span></h1>
+    </a>
+    <div class="header-actions">
+      <div class="status"><i></i> Scheduler online</div>
+      <details class="menu">
+        <summary aria-label="Open navigation menu"><span></span><span></span><span></span></summary>
+        <nav>
+          <a href="{{ url_for('main.index') }}">Dashboard</a>
+          <a href="{{ url_for('main.station_config') }}">Stations</a>
+          <a href="{{ url_for('main.storage_config') }}">Final storage</a>
+        </nav>
+      </details>
     </div>
-    <div class="status"><i></i> Scheduler online</div>
   </header>
   <main>
     {% for category, message in get_flashed_messages(with_categories=true) %}

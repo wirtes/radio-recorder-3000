@@ -1,0 +1,20 @@
+<script>
+  const deleteModal = document.querySelector('#delete-confirmation');
+  const deleteMessage = document.querySelector('#delete-confirmation-message');
+  let pendingDeleteForm = null;
+  document.querySelectorAll('.confirm-delete').forEach((form) => {
+    form.addEventListener('submit', (event) => {
+      event.preventDefault();
+      pendingDeleteForm = form;
+      const itemType = form.dataset.deleteType || 'item';
+      const itemName = form.dataset.deleteName || 'this item';
+      deleteMessage.textContent = `Delete the ${itemType} “${itemName}”? This cannot be undone.`;
+      if (typeof deleteModal.showModal === 'function') deleteModal.showModal();
+      else if (window.confirm(deleteMessage.textContent)) form.submit();
+    });
+  });
+  deleteModal.addEventListener('close', () => {
+    if (deleteModal.returnValue === 'confirm' && pendingDeleteForm) pendingDeleteForm.submit();
+    pendingDeleteForm = null;
+  });
+</script>

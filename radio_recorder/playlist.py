@@ -132,7 +132,7 @@ def fetch_playlist(account_url: str, scheduled_at: datetime, duration_minutes: i
         max_id = str(oldest["id"])
         limit = 20
 
-    start = show_start - timedelta(minutes=2)
+    start = show_start
     end = show_start + timedelta(minutes=duration_minutes + 5)
     lines: list[tuple[datetime, str]] = []
     for status in statuses:

@@ -28,10 +28,12 @@ bp = Blueprint("main", __name__)
 PAGE_SIZES = (10, 25, 100)
 
 
-def pagination_params(prefix: str, total: int) -> dict:
-    per_page = request.args.get(f"{prefix}_per_page", default=10, type=int)
+def pagination_params(prefix: str, total: int, default_per_page: int = 10) -> dict:
+    per_page = request.args.get(
+        f"{prefix}_per_page", default=default_per_page, type=int
+    )
     if per_page not in PAGE_SIZES:
-        per_page = 10
+        per_page = default_per_page
     pages = max(1, math.ceil(total / per_page))
     page = request.args.get(f"{prefix}_page", default=1, type=int)
     page = min(max(page, 1), pages)
@@ -46,21 +48,24 @@ def pagination_params(prefix: str, total: int) -> dict:
 
 @bp.get("/")
 def index():
+    active_tab = request.args.get("tab", "shows")
+    if active_tab not in {"shows", "recordings"}:
+        active_tab = "shows"
     edit_show = None
     edit_show_id = request.args.get("edit_show", type=int)
     if edit_show_id:
         edit_show = query("SELECT * FROM shows WHERE id=?", (edit_show_id,), one=True)
-    show_total = query("SELECT COUNT(*) AS count FROM shows", one=True)["count"]
-    show_pagination = pagination_params("shows", show_total)
     shows = [
         dict(row) for row in query(
             """
             SELECT s.*, st.station_id AS station_code, st.logo_path AS station_logo_path
             FROM shows s JOIN stations st ON st.id=s.station_id
-            ORDER BY s.name
-            LIMIT ? OFFSET ?
-            """,
-            (show_pagination["per_page"], show_pagination["offset"]),
+            ORDER BY
+                CASE WHEN s.frequency = 'weekly' THEN 1 ELSE 0 END,
+                CASE WHEN s.frequency = 'weekly' THEN s.weekday ELSE -1 END,
+                s.start_time,
+                s.name
+            """
         )
     ]
     for show in shows:
@@ -69,7 +74,9 @@ def index():
     recording_total = query(
         "SELECT COUNT(*) AS count FROM recordings", one=True
     )["count"]
-    recording_pagination = pagination_params("recordings", recording_total)
+    recording_pagination = pagination_params(
+        "recordings", recording_total, default_per_page=25
+    )
     recordings = [
         dict(row) for row in query(
             """
@@ -86,23 +93,40 @@ def index():
             recording["scheduled_at"]
         )
 
-    station_total = query("SELECT COUNT(*) AS count FROM stations", one=True)["count"]
-    delivered_total = query(
-        "SELECT COUNT(*) AS count FROM recordings WHERE status='complete'", one=True
-    )["count"]
     return render_template(
         "index.html",
         stations=query("SELECT * FROM stations ORDER BY station_id"),
         shows=shows,
         recordings=recordings,
-        show_pagination=show_pagination,
         recording_pagination=recording_pagination,
         page_sizes=PAGE_SIZES,
-        station_total=station_total,
-        show_total=show_total,
-        delivered_total=delivered_total,
+        active_tab=active_tab,
         edit_show=edit_show,
-        final_dir=query("SELECT value FROM settings WHERE key='final_dir'", one=True)["value"],
+    )
+
+
+@bp.get("/config/stations")
+def station_config():
+    edit_station = None
+    edit_station_id = request.args.get("edit_station", type=int)
+    if edit_station_id:
+        edit_station = query(
+            "SELECT * FROM stations WHERE id=?", (edit_station_id,), one=True
+        )
+    return render_template(
+        "stations.html",
+        stations=query("SELECT * FROM stations ORDER BY station_id"),
+        edit_station=edit_station,
+    )
+
+
+@bp.get("/config/storage")
+def storage_config():
+    return render_template(
+        "storage.html",
+        final_dir=query(
+            "SELECT value FROM settings WHERE key='final_dir'", one=True
+        )["value"],
     )
 
 
@@ -157,7 +181,42 @@ def create_station():
         flash("Station added.", "success")
     except Exception as exc:
         flash(f"Could not add station: {exc}", "error")
-    return redirect(url_for("main.index"))
+    return redirect(url_for("main.station_config"))
+
+
+@bp.post("/stations/<int:station_id>/update")
+def update_station(station_id: int):
+    station = query("SELECT * FROM stations WHERE id=?", (station_id,), one=True)
+    if not station:
+        flash("Station not found.", "error")
+        return redirect(url_for("main.station_config"))
+    try:
+        station_code = request.form["station_id"].strip()
+        logo_path = save_station_logo(request.files.get("logo"), station_code)
+        if logo_path is None:
+            logo_path = station["logo_path"]
+        execute(
+            """
+            UPDATE stations
+            SET station_id=?, stream_url=?, mastodon_url=?, logo_path=?
+            WHERE id=?
+            """,
+            (
+                station_code,
+                request.form["stream_url"].strip(),
+                request.form.get("mastodon_url", "").strip() or None,
+                logo_path,
+                station_id,
+            ),
+        )
+        old_logo = station["logo_path"]
+        if old_logo and logo_path != old_logo:
+            Path(old_logo).unlink(missing_ok=True)
+        flash("Station updated.", "success")
+        return redirect(url_for("main.station_config"))
+    except Exception as exc:
+        flash(f"Could not update station: {exc}", "error")
+        return redirect(url_for("main.station_config", edit_station=station_id))
 
 
 def save_station_logo(file, station_code: str) -> str | None:
@@ -196,7 +255,7 @@ def update_station_logo(station_id: int):
     station = query("SELECT * FROM stations WHERE id=?", (station_id,), one=True)
     if not station:
         flash("Station not found.", "error")
-        return redirect(url_for("main.index"))
+        return redirect(url_for("main.station_config"))
     try:
         logo_path = save_station_logo(request.files.get("logo"), station["station_id"])
         if not logo_path:
@@ -208,7 +267,7 @@ def update_station_logo(station_id: int):
         flash(f"{station['station_id']} logo updated.", "success")
     except Exception as exc:
         flash(f"Could not update station logo: {exc}", "error")
-    return redirect(url_for("main.index"))
+    return redirect(url_for("main.station_config"))
 
 
 @bp.post("/stations/<int:station_id>/delete")
@@ -218,7 +277,7 @@ def delete_station(station_id: int):
         flash("Station deleted.", "success")
     except Exception as exc:
         flash(f"Could not delete station: {exc}", "error")
-    return redirect(url_for("main.index"))
+    return redirect(url_for("main.station_config"))
 
 
 def save_artwork(file) -> str | None:
@@ -280,7 +339,7 @@ def create_show():
         flash("Show scheduled.", "success")
     except Exception as exc:
         flash(f"Could not add show: {exc}", "error")
-    return redirect(url_for("main.index"))
+    return redirect(url_for("main.storage_config"))
 
 
 @bp.post("/shows/<int:show_id>/update")
@@ -357,4 +416,4 @@ def update_settings():
     else:
         execute("UPDATE settings SET value=? WHERE key='final_dir'", (final_dir,))
         flash("Final storage location updated.", "success")
-    return redirect(url_for("main.index"))
+    return redirect(url_for("main.storage_config"))

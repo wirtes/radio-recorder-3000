@@ -1,0 +1,12 @@
+{% extends "base.html" %}
+{% block content %}
+<div class="page-heading"><p class="eyebrow">CONFIGURATION</p><h2>Final storage</h2><p>Choose where completed MP3 and playlist files are delivered.</p></div>
+<section class="panel config-panel">
+  <form action="{{ url_for('main.update_settings') }}" method="post">
+    <label>Shared drive path<input name="final_dir" required value="{{ final_dir }}"></label>
+    <p class="hint">Finished files are copied here atomically. Failed deliveries retry automatically.</p>
+    <button>Save location</button>
+  </form>
+  <div class="path-preview"><span>Resulting layout</span><code>Share / Show Name / Show Name 2026 / 2026-06-18 Show Name.mp3</code></div>
+</section>
+{% endblock %}

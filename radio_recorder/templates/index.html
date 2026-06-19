@@ -1,66 +1,13 @@
 {% extends "base.html" %}
 {% block content %}
-<section class="hero">
-  <div>
-    <p class="eyebrow">CONTROL ROOM</p>
-    <h2>Catch the signal.<br><em>Keep the show.</em></h2>
-    <p>Schedule streams, build playlists from Mastodon, tag pristine MP3s, and deliver the archive to shared storage.</p>
-  </div>
-  <div class="meters">
-    <div><strong>{{ station_total }}</strong><span>stations</span></div>
-    <div><strong>{{ show_total }}</strong><span>shows</span></div>
-    <div><strong>{{ delivered_total }}</strong><span>delivered</span></div>
-  </div>
-</section>
+<nav class="workspace-tabs" aria-label="Dashboard sections">
+  <a class="{{ 'active' if active_tab == 'shows' else '' }}" href="{{ url_for('main.index', tab='shows') }}">Shows</a>
+  <a class="{{ 'active' if active_tab == 'recordings' else '' }}" href="{{ url_for('main.index', tab='recordings', recordings_per_page=recording_pagination.per_page) }}">Recording log</a>
+</nav>
 
-<div class="grid two">
-  <section class="panel">
-    <div class="panel-title"><h3>Stations</h3><span>01</span></div>
-    <form action="{{ url_for('main.create_station') }}" method="post" enctype="multipart/form-data">
-      <label>Station ID<input name="station_id" required placeholder="KVCU"></label>
-      <label>Stream URL<input name="stream_url" type="url" required placeholder="https://stream.example/live"></label>
-      <label>Mastodon playlist account<input name="mastodon_url" type="url" placeholder="https://mastodon.social/@station"></label>
-      <label>Station logo<input name="logo" type="file" accept=".jpg,.jpeg,.png,.webp,image/jpeg,image/png,image/webp"></label>
-      <button>Add station</button>
-    </form>
-    <div class="items">
-      {% for station in stations %}
-      <article>
-        <div class="station-identity">
-          {% if station.logo_path %}
-            <img class="station-logo" src="{{ url_for('main.station_logo', station_id=station.id) }}" alt="{{ station.station_id }} logo">
-          {% else %}
-            <span class="station-logo fallback">{{ station.station_id[:2] }}</span>
-          {% endif %}
-          <div><strong>{{ station.station_id }}</strong><small>{{ station.stream_url }}</small></div>
-        </div>
-        <div class="station-actions">
-          <form class="logo-update" action="{{ url_for('main.update_station_logo', station_id=station.id) }}" method="post" enctype="multipart/form-data">
-            <label class="button quiet logo-picker">Logo<input name="logo" type="file" accept=".jpg,.jpeg,.png,.webp,image/jpeg,image/png,image/webp" onchange="this.form.submit()"></label>
-          </form>
-          <form action="{{ url_for('main.delete_station', station_id=station.id) }}" method="post"><button class="quiet danger">Delete</button></form>
-        </div>
-      </article>
-      {% else %}<p class="empty">No stations configured yet.</p>{% endfor %}
-    </div>
-  </section>
-
-  <section class="panel">
-    <div class="panel-title"><h3>Final storage</h3><span>02</span></div>
-    <form action="{{ url_for('main.update_settings') }}" method="post">
-      <label>Shared drive path<input name="final_dir" required value="{{ final_dir }}"></label>
-      <p class="hint">Finished MP3 and playlist files are copied here atomically. Failed deliveries retry automatically.</p>
-      <button>Save location</button>
-    </form>
-    <div class="path-preview">
-      <span>Resulting layout</span>
-      <code>Share / Show Name / Show Name 2026 / 2026-06-18 Show Name.mp3</code>
-    </div>
-  </section>
-</div>
-
+{% if active_tab == 'shows' %}
 <section class="panel wide" id="show-schedule-list">
-  <div class="panel-title"><h3>Show schedule</h3><span>03</span></div>
+  <div class="panel-title"><h3>Show schedule</h3></div>
   {% if stations %}
   <form id="show-form" class="show-form {{ 'editing' if edit_show else '' }}" action="{{ url_for('main.update_show', show_id=edit_show.id) if edit_show else url_for('main.create_show') }}" method="post" enctype="multipart/form-data">
     {% if edit_show %}
@@ -71,9 +18,9 @@
     {% endif %}
     <label>Station<select name="station_id">{% for station in stations %}<option value="{{ station.id }}" {{ 'selected' if edit_show and edit_show.station_id == station.id else '' }}>{{ station.station_id }}</option>{% endfor %}</select></label>
     <label>Show name<input name="name" required placeholder="Morning Show" value="{{ edit_show.name if edit_show else '' }}"></label>
-    <label>Duration (minutes)<input name="duration_minutes" type="number" min="1" required value="{{ edit_show.duration_minutes if edit_show else 60 }}"></label>
+    <label>Duration (minutes)<input name="duration_minutes" type="number" min="1" required value="{{ edit_show.duration_minutes if edit_show else 62 }}"></label>
     <label>Frequency<select name="frequency" id="frequency"><option value="weekly" {{ 'selected' if not edit_show or edit_show.frequency == 'weekly' else '' }}>Weekly</option><option value="daily" {{ 'selected' if edit_show and edit_show.frequency == 'daily' else '' }}>Daily</option><option value="weekdays" {{ 'selected' if edit_show and edit_show.frequency == 'weekdays' else '' }}>Daily Mon–Fri</option></select></label>
-    <label id="weekday-label">Weekday<select name="weekday" id="weekday-select">{% for day in ['Monday','Tuesday','Wednesday','Thursday','Friday','Saturday','Sunday'] %}<option value="{{ loop.index0 }}" {{ 'selected' if edit_show and edit_show.weekday == loop.index0 else '' }}>{{ day }}</option>{% endfor %}</select></label>
+    <label>Weekday<select name="weekday" id="weekday-select" required><option value="" disabled {{ 'selected' if not edit_show or edit_show.weekday is none else '' }}>Select a weekday</option>{% for day in ['Monday','Tuesday','Wednesday','Thursday','Friday','Saturday','Sunday'] %}<option value="{{ loop.index0 }}" {{ 'selected' if edit_show and edit_show.weekday == loop.index0 else '' }}>{{ day }}</option>{% endfor %}</select></label>
     <label>Start time<input name="start_time" type="time" required value="{{ edit_show.start_time if edit_show else '10:00' }}"></label>
     <label class="artwork-upload">Artwork (JPG)
       <span class="artwork-input-row">
@@ -84,51 +31,29 @@
     </label>
     <button>{{ 'Update show' if edit_show else 'Schedule show' }}</button>
   </form>
-  {% else %}<p class="empty">Add a station before scheduling a show.</p>{% endif %}
+  {% else %}
+    <p class="empty">Configure a station from the menu before scheduling a show.</p>
+  {% endif %}
 
   <div class="show-list">
     {% for show in shows %}
     <article class="{{ '' if show.enabled else 'disabled' }}">
       <div class="show-visual">
-        {% if show.artwork_path %}
-          <img class="show-artwork" src="{{ url_for('main.show_artwork', show_id=show.id) }}" alt="{{ show.name }} artwork">
-        {% else %}
-          <span class="show-artwork fallback">♪</span>
-        {% endif %}
-        <span class="show-station-badge">
-          {% if show.station_logo_path %}
-            <img src="{{ url_for('main.station_logo', station_id=show.station_id) }}" alt="">
-          {% endif %}
-          <span>{{ show.station_code }}</span>
-        </span>
+        {% if show.artwork_path %}<img class="show-artwork" src="{{ url_for('main.show_artwork', show_id=show.id) }}" alt="{{ show.name }} artwork">{% else %}<span class="show-artwork fallback">♪</span>{% endif %}
+        <span class="show-station-badge">{% if show.station_logo_path %}<img src="{{ url_for('main.station_logo', station_id=show.station_id) }}" alt="">{% endif %}<span>{{ show.station_code }}</span></span>
       </div>
-      <div class="show-main">
-        <strong>{{ show.name }}</strong>
-        <small>{{ show.schedule_description }}</small>
-      </div>
+      <div class="show-main"><strong>{{ show.name }}</strong><small>{{ show.schedule_description }}</small></div>
       <a class="button quiet" href="{{ url_for('main.index', edit_show=show.id) }}#show-form">Edit</a>
       <form action="{{ url_for('main.record_now', show_id=show.id) }}" method="post"><button class="quiet">Record now</button></form>
       <form action="{{ url_for('main.toggle_show', show_id=show.id) }}" method="post"><button class="quiet">{{ 'Pause' if show.enabled else 'Enable' }}</button></form>
-      <form action="{{ url_for('main.delete_show', show_id=show.id) }}" method="post"><button class="quiet danger">Delete</button></form>
+      <form class="confirm-delete" data-delete-name="{{ show.name }}" data-delete-type="show" action="{{ url_for('main.delete_show', show_id=show.id) }}" method="post"><button class="quiet danger">Delete</button></form>
     </article>
     {% else %}<p class="empty">The schedule is quiet.</p>{% endfor %}
   </div>
-  <div class="list-controls">
-    <form method="get" action="{{ url_for('main.index') }}#show-schedule-list">
-      <input type="hidden" name="recordings_page" value="{{ recording_pagination.page }}">
-      <input type="hidden" name="recordings_per_page" value="{{ recording_pagination.per_page }}">
-      <label>Rows<select name="shows_per_page" onchange="this.form.submit()">{% for size in page_sizes %}<option value="{{ size }}" {{ 'selected' if show_pagination.per_page == size else '' }}>{{ size }}</option>{% endfor %}</select></label>
-    </form>
-    <nav class="pagination" aria-label="Show schedule pages">
-      {% if show_pagination.page > 1 %}<a href="{{ url_for('main.index', shows_page=show_pagination.page-1, shows_per_page=show_pagination.per_page, recordings_page=recording_pagination.page, recordings_per_page=recording_pagination.per_page) }}#show-schedule-list">Previous</a>{% endif %}
-      <span>Page {{ show_pagination.page }} of {{ show_pagination.pages }}</span>
-      {% if show_pagination.page < show_pagination.pages %}<a href="{{ url_for('main.index', shows_page=show_pagination.page+1, shows_per_page=show_pagination.per_page, recordings_page=recording_pagination.page, recordings_per_page=recording_pagination.per_page) }}#show-schedule-list">Next</a>{% endif %}
-    </nav>
-  </div>
 </section>
-
+{% else %}
 <section class="panel wide" id="recording-log">
-  <div class="panel-title"><h3>Recording log</h3><span>04</span></div>
+  <div class="panel-title"><h3>Recording log</h3></div>
   <div class="table-wrap">
     <table>
       <thead><tr><th>Show</th><th>Scheduled</th><th>Status</th><th>Attempts</th><th>Detail</th></tr></thead>
@@ -141,27 +66,24 @@
   </div>
   <div class="list-controls">
     <form method="get" action="{{ url_for('main.index') }}#recording-log">
-      <input type="hidden" name="shows_page" value="{{ show_pagination.page }}">
-      <input type="hidden" name="shows_per_page" value="{{ show_pagination.per_page }}">
+      <input type="hidden" name="tab" value="recordings">
       <label>Rows<select name="recordings_per_page" onchange="this.form.submit()">{% for size in page_sizes %}<option value="{{ size }}" {{ 'selected' if recording_pagination.per_page == size else '' }}>{{ size }}</option>{% endfor %}</select></label>
     </form>
     <nav class="pagination" aria-label="Recording log pages">
-      {% if recording_pagination.page > 1 %}<a href="{{ url_for('main.index', recordings_page=recording_pagination.page-1, recordings_per_page=recording_pagination.per_page, shows_page=show_pagination.page, shows_per_page=show_pagination.per_page) }}#recording-log">Previous</a>{% endif %}
+      {% if recording_pagination.page > 1 %}<a href="{{ url_for('main.index', tab='recordings', recordings_page=recording_pagination.page-1, recordings_per_page=recording_pagination.per_page) }}#recording-log">Previous</a>{% endif %}
       <span>Page {{ recording_pagination.page }} of {{ recording_pagination.pages }}</span>
-      {% if recording_pagination.page < recording_pagination.pages %}<a href="{{ url_for('main.index', recordings_page=recording_pagination.page+1, recordings_per_page=recording_pagination.per_page, shows_page=show_pagination.page, shows_per_page=show_pagination.per_page) }}#recording-log">Next</a>{% endif %}
+      {% if recording_pagination.page < recording_pagination.pages %}<a href="{{ url_for('main.index', tab='recordings', recordings_page=recording_pagination.page+1, recordings_per_page=recording_pagination.per_page) }}#recording-log">Next</a>{% endif %}
     </nav>
   </div>
 </section>
+{% endif %}
+
+{% include "_delete_modal.html" %}
 <script>
   const frequency = document.querySelector('#frequency');
   const weekday = document.querySelector('#weekday-select');
-  function updateWeekday() {
-    if (frequency && weekday) weekday.disabled = frequency.value !== 'weekly';
-  }
-  if (frequency) {
-    frequency.addEventListener('change', updateWeekday);
-    updateWeekday();
-  }
+  function updateWeekday() { if (frequency && weekday) weekday.disabled = frequency.value !== 'weekly'; }
+  if (frequency) { frequency.addEventListener('change', updateWeekday); updateWeekday(); }
   const artworkInput = document.querySelector('#artwork-input');
   const artworkPreview = document.querySelector('#artwork-preview');
   if (artworkInput && artworkPreview) {
@@ -173,4 +95,5 @@
     });
   }
 </script>
+{% include "_delete_script.html" %}
 {% endblock %}

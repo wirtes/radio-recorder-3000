@@ -85,6 +85,20 @@ def test_station_logo_and_show_editing(tmp_path):
     assert response.status_code == 302
     assert client.get("/stations/1/logo").mimetype == "image/jpeg"
 
+    edit_station_page = client.get("/config/stations?edit_station=1")
+    assert b"Editing WXYZ" in edit_station_page.data
+    assert b'value="https://example.test/live"' in edit_station_page.data
+    response = client.post("/stations/1/update", data={
+        "station_id": "WXYZ-FM",
+        "stream_url": "https://example.test/updated",
+        "mastodon_url": "https://mastodon.test/@wxyz",
+    })
+    assert response.status_code == 302
+    station_page = client.get("/config/stations")
+    assert b"WXYZ-FM" in station_page.data
+    assert b"https://example.test/updated" in station_page.data
+    assert b'data-delete-type="station"' in station_page.data
+
     client.post("/shows", data={
         "station_id": "1",
         "name": "Old Name",
@@ -119,6 +133,7 @@ def test_station_logo_and_show_editing(tmp_path):
     })
     assert response.status_code == 302
     assert b"Every Monday" in client.get("/").data
+    assert b'data-delete-type="show"' in client.get("/").data
 
 
 def test_playlist_cleanup():
@@ -251,7 +266,6 @@ def test_mastodon_window_and_older_post_paging(monkeypatch):
         },
     ]
     assert playlist == [
-        "0:00 Boundary",
         "0:00 Start",
         "0:10 Early",
         "0:30 Middle",
@@ -300,7 +314,7 @@ def test_paginated_lists_and_recording_time_format(tmp_path, monkeypatch):
         "stream_url": "https://example.test/live",
     })
     with app.app_context():
-        for index in range(12):
+        for index in range(30):
             show_id = execute(
                 """
                 INSERT INTO shows(
@@ -320,20 +334,87 @@ def test_paginated_lists_and_recording_time_format(tmp_path, monkeypatch):
             )
 
     first_page = client.get("/")
-    assert first_page.data.count(b'class="show-main"') == 10
-    assert b"Page 1 of 2" in first_page.data
-    assert b"2026-06-19 1:00pm" in first_page.data
+    assert first_page.data.count(b'class="show-main"') == 30
+    assert b"Show schedule" in first_page.data
+    assert b'id="recording-log"' not in first_page.data
+    assert b"Page 1 of" not in first_page.data
     assert b"LONG-STATION-NAME" in first_page.data
 
-    second_pages = client.get(
-        "/?shows_page=2&shows_per_page=10&recordings_page=2&recordings_per_page=10"
+    recording_page = client.get(
+        "/?tab=recordings&recordings_page=1"
     )
-    assert second_pages.data.count(b'class="show-main"') == 2
-    assert second_pages.data.count(b"<tr><td>Show") == 2
+    assert b'id="show-schedule-list"' not in recording_page.data
+    assert recording_page.data.count(b"<tr><td>Show") == 25
+    assert b"2026-06-19 1:00pm" in recording_page.data
+    assert b'<option value="25" selected>' in recording_page.data
 
-    expanded = client.get("/?shows_per_page=25&recordings_per_page=25")
-    assert expanded.data.count(b'class="show-main"') == 12
-    assert b'<option value="25" selected>' in expanded.data
+    second_page = client.get(
+        "/?tab=recordings&recordings_page=2&recordings_per_page=25"
+    )
+    assert second_page.data.count(b"<tr><td>Show") == 5
+
+    expanded = client.get("/?tab=recordings&recordings_per_page=100")
+    assert expanded.data.count(b"<tr><td>Show") == 30
+    assert b'<option value="100" selected>' in expanded.data
+
+
+def test_navigation_and_new_defaults(tmp_path):
+    app = make_app(tmp_path)
+    client = app.test_client()
+    client.post("/stations", data={
+        "station_id": "KVCU",
+        "stream_url": "https://example.test/live",
+    })
+    dashboard = client.get("/")
+    assert b'value="62"' in dashboard.data
+    assert b"Select a weekday" in dashboard.data
+    assert b"CONTROL ROOM" not in dashboard.data
+    assert b"Catch the signal" not in dashboard.data
+    assert b'class="meters"' not in dashboard.data
+    assert b'href="/config/stations"' in dashboard.data
+    assert b'href="/config/storage"' in dashboard.data
+    assert b">01<" not in dashboard.data
+    assert b">02<" not in dashboard.data
+    assert b">03<" not in dashboard.data
+    assert b">04<" not in dashboard.data
+    assert client.get("/config/stations").status_code == 200
+    assert client.get("/config/storage").status_code == 200
+
+
+def test_shows_order_by_schedule(tmp_path):
+    app = make_app(tmp_path)
+    client = app.test_client()
+    client.post("/stations", data={
+        "station_id": "KVCU",
+        "stream_url": "https://example.test/live",
+    })
+    with app.app_context():
+        created = now_iso()
+        rows = [
+            ("Friday Late", "weekly", "14:00", 4),
+            ("Tuesday Early", "weekly", "08:00", 1),
+            ("Friday Early", "weekly", "09:00", 4),
+            ("Daily Late", "daily", "11:00", None),
+            ("Weekday Early", "weekdays", "07:00", None),
+        ]
+        for name, frequency, start_time, weekday in rows:
+            execute(
+                """
+                INSERT INTO shows(
+                    station_id, name, duration_minutes, frequency,
+                    start_time, weekday, enabled, created_at
+                ) VALUES(1, ?, 62, ?, ?, ?, 1, ?)
+                """,
+                (name, frequency, start_time, weekday, created),
+            )
+
+    page = client.get("/").data
+    names = [
+        b"Weekday Early", b"Daily Late", b"Tuesday Early",
+        b"Friday Early", b"Friday Late",
+    ]
+    positions = [page.index(name) for name in names]
+    assert positions == sorted(positions)
 
 
 def test_legacy_show_schema_migrates_without_slug(tmp_path):

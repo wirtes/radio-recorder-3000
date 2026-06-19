@@ -1,0 +1,28 @@
+{% extends "base.html" %}
+{% block content %}
+<div class="page-heading"><p class="eyebrow">CONFIGURATION</p><h2>Stations</h2><p>Manage reusable stream and playlist sources.</p></div>
+<section class="panel config-panel">
+  <form id="station-form" class="{{ 'editing-form' if edit_station else '' }}" action="{{ url_for('main.update_station', station_id=edit_station.id) if edit_station else url_for('main.create_station') }}" method="post" enctype="multipart/form-data">
+    {% if edit_station %}<div class="edit-banner"><strong>Editing {{ edit_station.station_id }}</strong><a href="{{ url_for('main.station_config') }}#station-form">Cancel</a></div>{% endif %}
+    <label>Station ID<input name="station_id" required placeholder="KVCU" value="{{ edit_station.station_id if edit_station else '' }}"></label>
+    <label>Stream URL<input name="stream_url" type="url" required placeholder="https://stream.example/live" value="{{ edit_station.stream_url if edit_station else '' }}"></label>
+    <label>Mastodon playlist account<input name="mastodon_url" type="url" placeholder="https://mastodon.social/@station" value="{{ edit_station.mastodon_url if edit_station and edit_station.mastodon_url else '' }}"></label>
+    <label>Station logo<input name="logo" type="file" accept=".jpg,.jpeg,.png,.webp,image/jpeg,image/png,image/webp"><small>{{ 'Leave empty to keep current logo.' if edit_station and edit_station.logo_path else '' }}</small></label>
+    <button>{{ 'Update station' if edit_station else 'Add station' }}</button>
+  </form>
+  <div class="items">
+    {% for station in stations %}
+    <article>
+      <div class="station-identity">{% if station.logo_path %}<img class="station-logo" src="{{ url_for('main.station_logo', station_id=station.id) }}" alt="{{ station.station_id }} logo">{% else %}<span class="station-logo fallback">{{ station.station_id[:2] }}</span>{% endif %}<div><strong>{{ station.station_id }}</strong><small>{{ station.stream_url }}</small></div></div>
+      <div class="station-actions">
+        <a class="button quiet" href="{{ url_for('main.station_config', edit_station=station.id) }}#station-form">Edit</a>
+        <form class="logo-update" action="{{ url_for('main.update_station_logo', station_id=station.id) }}" method="post" enctype="multipart/form-data"><label class="button quiet logo-picker">Logo<input name="logo" type="file" accept=".jpg,.jpeg,.png,.webp,image/jpeg,image/png,image/webp" onchange="this.form.submit()"></label></form>
+        <form class="confirm-delete" data-delete-name="{{ station.station_id }}" data-delete-type="station" action="{{ url_for('main.delete_station', station_id=station.id) }}" method="post"><button class="quiet danger">Delete</button></form>
+      </div>
+    </article>
+    {% else %}<p class="empty">No stations configured yet.</p>{% endfor %}
+  </div>
+</section>
+{% include "_delete_modal.html" %}
+{% include "_delete_script.html" %}
+{% endblock %}
