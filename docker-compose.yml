@@ -1,0 +1,13 @@
+services:
+  radio-recorder:
+    build: .
+    restart: unless-stopped
+    ports:
+      - "8585:8585"
+    environment:
+      TZ: America/Denver
+      DATA_DIR: /data
+      FINAL_DIR: /recordings
+    volumes:
+      - ./data:/data
+      - ./recordings:/recordings

@@ -1,0 +1,100 @@
+{% extends "base.html" %}
+{% block content %}
+<section class="hero">
+  <div>
+    <p class="eyebrow">CONTROL ROOM</p>
+    <h2>Catch the signal.<br><em>Keep the show.</em></h2>
+    <p>Schedule streams, build playlists from Mastodon, tag pristine MP3s, and deliver the archive to shared storage.</p>
+  </div>
+  <div class="meters">
+    <div><strong>{{ stations|length }}</strong><span>stations</span></div>
+    <div><strong>{{ shows|length }}</strong><span>shows</span></div>
+    <div><strong>{{ recordings|selectattr('status', 'equalto', 'complete')|list|length }}</strong><span>delivered</span></div>
+  </div>
+</section>
+
+<div class="grid two">
+  <section class="panel">
+    <div class="panel-title"><h3>Stations</h3><span>01</span></div>
+    <form action="{{ url_for('main.create_station') }}" method="post">
+      <label>Station ID<input name="station_id" required placeholder="KVCU"></label>
+      <label>Stream URL<input name="stream_url" type="url" required placeholder="https://stream.example/live"></label>
+      <label>Mastodon playlist account<input name="mastodon_url" type="url" placeholder="https://mastodon.social/@station"></label>
+      <button>Add station</button>
+    </form>
+    <div class="items">
+      {% for station in stations %}
+      <article>
+        <div><strong>{{ station.station_id }}</strong><small>{{ station.stream_url }}</small></div>
+        <form action="{{ url_for('main.delete_station', station_id=station.id) }}" method="post"><button class="quiet danger">Delete</button></form>
+      </article>
+      {% else %}<p class="empty">No stations configured yet.</p>{% endfor %}
+    </div>
+  </section>
+
+  <section class="panel">
+    <div class="panel-title"><h3>Final storage</h3><span>02</span></div>
+    <form action="{{ url_for('main.update_settings') }}" method="post">
+      <label>Shared drive path<input name="final_dir" required value="{{ final_dir }}"></label>
+      <p class="hint">Finished MP3 and playlist files are copied here atomically. Failed deliveries retry automatically.</p>
+      <button>Save location</button>
+    </form>
+    <div class="path-preview">
+      <span>Resulting layout</span>
+      <code>Share / Show Name / Show Name 2026 / 2026-06-18 Show Name.mp3</code>
+    </div>
+  </section>
+</div>
+
+<section class="panel wide">
+  <div class="panel-title"><h3>Show schedule</h3><span>03</span></div>
+  {% if stations %}
+  <form class="show-form" action="{{ url_for('main.create_show') }}" method="post" enctype="multipart/form-data">
+    <label>Station<select name="station_id">{% for station in stations %}<option value="{{ station.id }}">{{ station.station_id }}</option>{% endfor %}</select></label>
+    <label>Slug<input name="slug" required pattern="[A-Za-z0-9_-]+" placeholder="morning-show"></label>
+    <label>Show name<input name="name" required placeholder="Morning Show"></label>
+    <label>Duration (minutes)<input name="duration_minutes" type="number" min="1" required value="60"></label>
+    <label>Frequency<select name="frequency" id="frequency"><option value="weekly" selected>Weekly</option><option value="daily">Daily</option></select></label>
+    <label id="weekday-label">Weekday<select name="weekday">{% for day in ['Monday','Tuesday','Wednesday','Thursday','Friday','Saturday','Sunday'] %}<option value="{{ loop.index0 }}">{{ day }}</option>{% endfor %}</select></label>
+    <label>Start time<input name="start_time" type="time" required value="10:00"></label>
+    <label>Artwork (JPG)<input name="artwork" type="file" accept=".jpg,.jpeg,image/jpeg"></label>
+    <button>Schedule show</button>
+  </form>
+  {% else %}<p class="empty">Add a station before scheduling a show.</p>{% endif %}
+
+  <div class="show-list">
+    {% for show in shows %}
+    <article class="{{ '' if show.enabled else 'disabled' }}">
+      <div class="show-badge">{{ show.station_code }}</div>
+      <div class="show-main">
+        <strong>{{ show.name }}</strong>
+        <small>{{ show.frequency|title }} · {% if show.frequency == 'weekly' %}{{ ['Mon','Tue','Wed','Thu','Fri','Sat','Sun'][show.weekday] }} · {% endif %}{{ show.start_time }} · {{ show.duration_minutes }} min</small>
+      </div>
+      <form action="{{ url_for('main.record_now', show_id=show.id) }}" method="post"><button class="quiet">Record now</button></form>
+      <form action="{{ url_for('main.toggle_show', show_id=show.id) }}" method="post"><button class="quiet">{{ 'Pause' if show.enabled else 'Enable' }}</button></form>
+      <form action="{{ url_for('main.delete_show', show_id=show.id) }}" method="post"><button class="quiet danger">Delete</button></form>
+    </article>
+    {% else %}<p class="empty">The schedule is quiet.</p>{% endfor %}
+  </div>
+</section>
+
+<section class="panel wide">
+  <div class="panel-title"><h3>Recording log</h3><span>04</span></div>
+  <div class="table-wrap">
+    <table>
+      <thead><tr><th>Show</th><th>Scheduled</th><th>Status</th><th>Attempts</th><th>Detail</th></tr></thead>
+      <tbody>
+      {% for recording in recordings %}
+        <tr><td>{{ recording.show_name }}</td><td>{{ recording.scheduled_at[:16].replace('T', ' ') }}</td><td><span class="pill {{ recording.status }}">{{ recording.status.replace('_', ' ') }}</span></td><td>{{ recording.attempts }}</td><td class="detail">{{ recording.error or recording.mp3_path or '—' }}</td></tr>
+      {% else %}<tr><td colspan="5" class="empty">No recordings yet.</td></tr>{% endfor %}
+      </tbody>
+    </table>
+  </div>
+</section>
+<script>
+  const frequency = document.querySelector('#frequency');
+  const weekday = document.querySelector('#weekday-label');
+  if (frequency) frequency.addEventListener('change', () => weekday.hidden = frequency.value === 'daily');
+</script>
+{% endblock %}
+
