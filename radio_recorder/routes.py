@@ -172,6 +172,15 @@ def schedule_description(show) -> str:
     return f"{cadence} at {time_text} • {minutes} minutes"
 
 
+def schedule_fields(form) -> tuple[str, int | None]:
+    frequency = form.get("frequency", "weekly")
+    weekday_value = form.get("weekday")
+    if frequency == "weekly" and weekday_value == "weekdays":
+        return "weekdays", None
+    weekday = int(weekday_value) if frequency == "weekly" else None
+    return frequency, weekday
+
+
 @bp.post("/stations")
 def create_station():
     try:
@@ -328,8 +337,7 @@ def create_show():
         name = request.form["name"].strip()
         if "/" in name or "\\" in name or name in {".", ".."}:
             raise ValueError("Show name cannot contain path separators.")
-        frequency = request.form.get("frequency", "weekly")
-        weekday = int(request.form["weekday"]) if frequency == "weekly" else None
+        frequency, weekday = schedule_fields(request.form)
         artwork_path = save_artwork(request.files.get("artwork"))
         execute(
             """
@@ -365,8 +373,7 @@ def update_show(show_id: int):
         name = request.form["name"].strip()
         if "/" in name or "\\" in name or name in {".", ".."}:
             raise ValueError("Show name cannot contain path separators.")
-        frequency = request.form.get("frequency", "weekly")
-        weekday = int(request.form["weekday"]) if frequency == "weekly" else None
+        frequency, weekday = schedule_fields(request.form)
         artwork_path = save_artwork(request.files.get("artwork"))
         if artwork_path is None:
             artwork_path = show["artwork_path"]

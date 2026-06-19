@@ -7,7 +7,7 @@ from io import BytesIO
 from PIL import Image
 
 from radio_recorder import create_app
-from radio_recorder.db import execute, now_iso
+from radio_recorder.db import execute, now_iso, query
 from radio_recorder.playlist import (
     clean_status_line,
     fetch_playlist,
@@ -306,6 +306,34 @@ def test_weekday_frequency():
     assert runs_on_weekday("daily", None, 6)
 
 
+def test_monday_to_friday_weekday_option(tmp_path):
+    app = make_app(tmp_path)
+    client = app.test_client()
+    client.post("/stations", data={
+        "station_id": "KVCU",
+        "stream_url": "https://example.test/live",
+    })
+    response = client.post("/shows", data={
+        "station_id": "1",
+        "name": "Weekday Selection Show",
+        "duration_minutes": "62",
+        "frequency": "weekly",
+        "weekday": "weekdays",
+        "start_time": "08:00",
+    })
+    assert response.status_code == 302
+    page = client.get("/")
+    assert b"Every Monday" in page.data
+    with app.app_context():
+        show = query(
+            "SELECT frequency, weekday FROM shows WHERE name=?",
+            ("Weekday Selection Show",),
+            one=True,
+        )
+    assert show["frequency"] == "weekdays"
+    assert show["weekday"] is None
+
+
 def test_paginated_lists_and_recording_time_format(tmp_path, monkeypatch):
     monkeypatch.setenv("TZ", "America/Denver")
     app = make_app(tmp_path)
@@ -369,6 +397,7 @@ def test_navigation_and_new_defaults(tmp_path):
     dashboard = client.get("/")
     assert b'value="62"' in dashboard.data
     assert b'name="start_time" type="time" required value=""' in dashboard.data
+    assert b"Select a station" in dashboard.data
     assert b"Select a weekday" in dashboard.data
     assert b"CONTROL ROOM" not in dashboard.data
     assert b"Catch the signal" not in dashboard.data
