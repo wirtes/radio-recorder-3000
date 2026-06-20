@@ -85,7 +85,9 @@ def record_show(app, recording_id: int) -> None:
     with app.app_context():
         row = query(
             """
-            SELECT r.*, s.name, s.duration_minutes, s.frequency, s.artwork_path,
+            SELECT r.*, s.name,
+                   COALESCE(r.duration_minutes, s.duration_minutes) AS recording_minutes,
+                   s.frequency, s.artwork_path,
                    st.stream_url, st.mastodon_url
             FROM recordings r
             JOIN shows s ON s.id = r.show_id
@@ -109,31 +111,35 @@ def record_show(app, recording_id: int) -> None:
         safe_name = row["name"].replace("/", "-").replace("\\", "-").strip(". ")
         raw_path = work_dir / "capture.mp3"
         mp3_path = work_dir / f"{local_when:%Y-%m-%d} {safe_name}.mp3"
-        playlist_path = mp3_path.with_suffix(".txt")
+        playlist_path: Path | None = None
         try:
             subprocess.run(
                 [
                     "ffmpeg", "-hide_banner", "-loglevel", "error", "-y",
                     "-i", row["stream_url"],
-                    "-t", str(row["duration_minutes"] * 60),
+                    "-t", str(row["recording_minutes"] * 60),
                     "-vn", "-c:a", "libmp3lame", "-q:a", "2",
                     str(raw_path),
                 ],
                 check=True,
-                timeout=(row["duration_minutes"] + 5) * 60,
+                timeout=(row["recording_minutes"] + 5) * 60,
             )
             raw_path.replace(mp3_path)
 
             lines: list[str] = []
             if row["mastodon_url"]:
+                playlist_path = mp3_path.with_suffix(".txt")
                 try:
                     lines = fetch_playlist(
-                        row["mastodon_url"], scheduled, row["duration_minutes"]
+                        row["mastodon_url"], scheduled, row["recording_minutes"]
                     )
                 except Exception as exc:
                     lines = [f"Playlist retrieval failed: {exc}"]
             playlist = "\n".join(lines)
-            playlist_path.write_text(playlist + ("\n" if playlist else ""), encoding="utf-8")
+            if playlist_path:
+                playlist_path.write_text(
+                    playlist + ("\n" if playlist else ""), encoding="utf-8"
+                )
             add_id3_tags(
                 mp3_path, row["name"], local_when, row["frequency"],
                 playlist, row["artwork_path"],
@@ -144,7 +150,13 @@ def record_show(app, recording_id: int) -> None:
                 SET status='ready', mp3_path=?, playlist_path=?, updated_at=?, next_retry_at=?
                 WHERE id=?
                 """,
-                (str(mp3_path), str(playlist_path), now_iso(), now_iso(), recording_id),
+                (
+                    str(mp3_path),
+                    str(playlist_path) if playlist_path else None,
+                    now_iso(),
+                    now_iso(),
+                    recording_id,
+                ),
             )
             deliver_recording(recording_id)
         except Exception as exc:
@@ -173,7 +185,10 @@ def deliver_recording(recording_id: int) -> bool:
     destination = build_destination(final_root, row["name"], when)
     try:
         destination.mkdir(parents=True, exist_ok=True)
-        for source_string in (row["mp3_path"], row["playlist_path"]):
+        source_strings = [row["mp3_path"]]
+        if row["playlist_path"]:
+            source_strings.append(row["playlist_path"])
+        for source_string in source_strings:
             source = Path(source_string)
             temporary = destination / f".{source.name}.partial"
             shutil.copy2(source, temporary)
@@ -188,7 +203,11 @@ def deliver_recording(recording_id: int) -> bool:
             """,
             (
                 str(destination / Path(row["mp3_path"]).name),
-                str(destination / Path(row["playlist_path"]).name),
+                (
+                    str(destination / Path(row["playlist_path"]).name)
+                    if row["playlist_path"]
+                    else None
+                ),
                 now_iso(),
                 recording_id,
             ),

@@ -20,7 +20,7 @@
     <label>Show name<input name="name" required placeholder="Morning Show" value="{{ edit_show.name if edit_show else '' }}"></label>
     <label>Duration (minutes)<input name="duration_minutes" type="number" min="1" required value="{{ edit_show.duration_minutes if edit_show else 62 }}"></label>
     <label>Frequency<select name="frequency" id="frequency"><option value="weekly" {{ 'selected' if not edit_show or edit_show.frequency == 'weekly' else '' }}>Weekly</option><option value="daily" {{ 'selected' if edit_show and edit_show.frequency == 'daily' else '' }}>Daily</option><option value="weekdays" {{ 'selected' if edit_show and edit_show.frequency == 'weekdays' else '' }}>Daily Mon–Fri</option></select></label>
-    <label>Weekday<select name="weekday" id="weekday-select" required><option value="" disabled {{ 'selected' if not edit_show or edit_show.weekday is none else '' }}>Select a weekday</option><option value="weekdays" {{ 'selected' if edit_show and edit_show.frequency == 'weekdays' else '' }}>Monday to Friday</option>{% for day in ['Monday','Tuesday','Wednesday','Thursday','Friday','Saturday','Sunday'] %}<option value="{{ loop.index0 }}" {{ 'selected' if edit_show and edit_show.weekday == loop.index0 else '' }}>{{ day }}</option>{% endfor %}</select></label>
+    <label>Weekday<select name="weekday" id="weekday-select" required><option value="" disabled {{ 'selected' if not edit_show or edit_show.weekday is none else '' }}>Select a weekday</option>{% for day in ['Monday','Tuesday','Wednesday','Thursday','Friday','Saturday','Sunday'] %}<option value="{{ loop.index0 }}" {{ 'selected' if edit_show and edit_show.weekday == loop.index0 else '' }}>{{ day }}</option>{% endfor %}</select></label>
     <label>Start time<input name="start_time" type="time" required value="{{ edit_show.start_time if edit_show else '' }}"></label>
     <label class="artwork-upload">Artwork (JPG)
       <span class="artwork-input-row">
@@ -49,12 +49,18 @@
     <article class="{{ '' if show.enabled else 'disabled' }}">
       <div class="show-visual">
         {% if show.artwork_path %}<img class="show-artwork" src="{{ url_for('main.show_artwork', show_id=show.id) }}" alt="{{ show.name }} artwork">{% else %}<span class="show-artwork fallback">♪</span>{% endif %}
-        <span class="show-station-badge">{% if show.station_logo_path %}<img src="{{ url_for('main.station_logo', station_id=show.station_id) }}" alt="">{% endif %}<span>{{ show.station_code }}</span></span>
+        <span class="show-station-icon">
+          {% if show.station_logo_path %}
+            <img src="{{ url_for('main.station_logo', station_id=show.station_id) }}" alt="{{ show.station_code }} logo">
+          {% else %}
+            <span>{{ show.station_code[:2] }}</span>
+          {% endif %}
+        </span>
       </div>
-      <div class="show-main"><strong>{{ show.name }}</strong><small>{{ show.schedule_description }}</small></div>
+      <div class="show-main"><strong>{{ show.name }} <span>({{ show.station_code }})</span></strong><small>{{ show.schedule_description }}{% if not show.enabled %} • Inactive{% endif %}</small></div>
       <a class="button quiet" href="{{ url_for('main.index', edit_show=show.id, station=station_filter) if station_filter else url_for('main.index', edit_show=show.id) }}#show-form">Edit</a>
-      <form action="{{ url_for('main.record_now', show_id=show.id) }}" method="post"><button class="quiet">Record now</button></form>
-      <form action="{{ url_for('main.toggle_show', show_id=show.id) }}" method="post"><button class="quiet">{{ 'Pause' if show.enabled else 'Enable' }}</button></form>
+      <button class="quiet record-now-button" type="button" data-record-url="{{ url_for('main.record_now', show_id=show.id) }}" data-show-name="{{ show.name }}" data-duration="{{ show.duration_minutes }}">Record now</button>
+      <form action="{{ url_for('main.toggle_show', show_id=show.id) }}" method="post"><button class="quiet">{{ 'Deactivate' if show.enabled else 'Activate' }}</button></form>
       <form class="confirm-delete" data-delete-name="{{ show.name }}" data-delete-type="show" action="{{ url_for('main.delete_show', show_id=show.id) }}" method="post"><button class="quiet danger">Delete</button></form>
     </article>
     {% else %}<p class="empty">The schedule is quiet.</p>{% endfor %}
@@ -88,6 +94,17 @@
 {% endif %}
 
 {% include "_delete_modal.html" %}
+<dialog id="record-now-dialog" class="delete-modal">
+  <form id="record-now-form" method="post">
+    <p class="eyebrow">RECORD NOW</p>
+    <h3 id="record-now-title">Start recording?</h3>
+    <label>Minutes to record<input id="record-now-minutes" name="duration_minutes" type="number" min="1" required></label>
+    <div class="modal-actions">
+      <button type="button" class="quiet" id="cancel-record-now">Cancel</button>
+      <button type="submit">Start recording</button>
+    </div>
+  </form>
+</dialog>
 <script>
   const frequency = document.querySelector('#frequency');
   const weekday = document.querySelector('#weekday-select');
@@ -103,6 +120,23 @@
       artworkPreview.classList.remove('empty');
     });
   }
+  const recordDialog = document.querySelector('#record-now-dialog');
+  const recordForm = document.querySelector('#record-now-form');
+  const recordTitle = document.querySelector('#record-now-title');
+  const recordMinutes = document.querySelector('#record-now-minutes');
+  document.querySelectorAll('.record-now-button').forEach((button) => {
+    button.addEventListener('click', () => {
+      recordForm.action = button.dataset.recordUrl;
+      recordTitle.textContent = `Record “${button.dataset.showName}” now?`;
+      recordMinutes.value = button.dataset.duration;
+      recordDialog.showModal();
+      recordMinutes.focus();
+      recordMinutes.select();
+    });
+  });
+  document.querySelector('#cancel-record-now')?.addEventListener('click', () => {
+    recordDialog.close();
+  });
 </script>
 {% include "_delete_script.html" %}
 {% endblock %}

@@ -38,6 +38,7 @@ CREATE TABLE IF NOT EXISTS recordings (
     mp3_path TEXT,
     playlist_path TEXT,
     error TEXT,
+    duration_minutes INTEGER CHECK(duration_minutes > 0),
     attempts INTEGER NOT NULL DEFAULT 0,
     next_retry_at TEXT,
     created_at TEXT NOT NULL,
@@ -67,6 +68,16 @@ def init_db(app) -> None:
         }
         if "logo_path" not in station_columns:
             db.execute("ALTER TABLE stations ADD COLUMN logo_path TEXT")
+        recording_columns = {
+            row["name"] for row in db.execute("PRAGMA table_info(recordings)").fetchall()
+        }
+        if "duration_minutes" not in recording_columns:
+            db.execute(
+                """
+                ALTER TABLE recordings
+                ADD COLUMN duration_minutes INTEGER CHECK(duration_minutes > 0)
+                """
+            )
         show_columns = {
             row["name"] for row in db.execute("PRAGMA table_info(shows)").fetchall()
         }

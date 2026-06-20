@@ -15,6 +15,7 @@ from radio_recorder.playlist import (
     parse_account_url,
 )
 from radio_recorder.processing import add_id3_tags, build_destination, track_number
+from radio_recorder.processing import deliver_recording
 from radio_recorder.scheduler import runs_on_weekday
 from mutagen.id3 import ID3
 
@@ -57,8 +58,119 @@ def test_station_and_show_configuration(tmp_path):
     page = client.get("/")
     assert b"Test Show" in page.data
     assert b"KVCU" in page.data
+    assert b"Test Show <span>(KVCU)</span>" in page.data
     assert b"Every Thursday at 10:00am" in page.data
     assert client.get("/shows/1/artwork").status_code == 200
+
+
+def test_show_activation_toggle(tmp_path):
+    app = make_app(tmp_path)
+    client = app.test_client()
+    client.post("/stations", data={
+        "station_id": "KVCU",
+        "stream_url": "https://example.test/live",
+    })
+    client.post("/shows", data={
+        "station_id": "1",
+        "name": "Toggle Show",
+        "duration_minutes": "62",
+        "frequency": "daily",
+        "start_time": "10:00",
+    })
+    assert b"Deactivate" in client.get("/").data
+    client.post("/shows/1/toggle")
+    page = client.get("/")
+    assert b"Toggle Show" in page.data
+    assert b"Inactive" in page.data
+    assert b"Activate" in page.data
+
+
+def test_record_now_duration_override(tmp_path, monkeypatch):
+    app = make_app(tmp_path)
+    client = app.test_client()
+    client.post("/stations", data={
+        "station_id": "KVCU",
+        "stream_url": "https://example.test/live",
+    })
+    client.post("/shows", data={
+        "station_id": "1",
+        "name": "Manual Show",
+        "duration_minutes": "62",
+        "frequency": "daily",
+        "start_time": "10:00",
+    })
+    monkeypatch.setattr("radio_recorder.routes.Thread.start", lambda self: None)
+
+    page = client.get("/")
+    assert b'class="quiet record-now-button"' in page.data
+    assert b'data-duration="62"' in page.data
+
+    response = client.post(
+        "/shows/1/record", data={"duration_minutes": "17"}
+    )
+    assert response.status_code == 302
+    with app.app_context():
+        recording = query(
+            "SELECT duration_minutes FROM recordings", one=True
+        )
+    assert recording["duration_minutes"] == 17
+
+    invalid = client.post(
+        "/shows/1/record", data={"duration_minutes": "0"}
+    )
+    assert invalid.status_code == 302
+    with app.app_context():
+        count = query(
+            "SELECT COUNT(*) AS count FROM recordings", one=True
+        )["count"]
+    assert count == 1
+
+
+def test_delivery_without_playlist_sidecar(tmp_path):
+    app = make_app(tmp_path)
+    with app.app_context():
+        execute(
+            """
+            INSERT INTO stations(station_id, stream_url, created_at)
+            VALUES('KVCU', 'https://example.test/live', ?)
+            """,
+            (now_iso(),),
+        )
+        show_id = execute(
+            """
+            INSERT INTO shows(
+                station_id, name, duration_minutes, frequency,
+                start_time, weekday, enabled, created_at
+            ) VALUES(1, 'No Playlist Show', 62, 'daily', '10:00', NULL, 1, ?)
+            """,
+            (now_iso(),),
+        )
+        work_dir = tmp_path / "data" / "work" / "1"
+        work_dir.mkdir(parents=True)
+        mp3_path = work_dir / "2026-06-19 No Playlist Show.mp3"
+        mp3_path.write_bytes(b"mp3")
+        recording_id = execute(
+            """
+            INSERT INTO recordings(
+                show_id, scheduled_at, status, mp3_path, playlist_path,
+                created_at, updated_at
+            ) VALUES(?, '2026-06-19T10:00:00+00:00', 'ready', ?, NULL, ?, ?)
+            """,
+            (show_id, str(mp3_path), now_iso(), now_iso()),
+        )
+        assert deliver_recording(recording_id)
+        destination = (
+            tmp_path / "final" / "No Playlist Show" /
+            "No Playlist Show 2026"
+        )
+        assert (destination / mp3_path.name).exists()
+        assert list(destination.glob("*.txt")) == []
+        recording = query(
+            "SELECT playlist_path FROM recordings WHERE id=?",
+            (recording_id,),
+            one=True,
+        )
+        assert recording["playlist_path"] is None
 
 
 def test_station_logo_and_show_editing(tmp_path):
@@ -158,9 +270,21 @@ def test_playlist_elapsed_times(monkeypatch):
         "8:00am Second Song",
         "7:30am Before Start",
     ], scheduled) == [
-        "0:00 First Song",
         "0:20 Second Song",
         "0:00 Before Start",
+    ]
+
+
+def test_playlist_keeps_only_last_zero_timestamp(monkeypatch):
+    monkeypatch.setenv("TZ", "UTC")
+    scheduled = datetime(2026, 6, 19, 10, 0, tzinfo=timezone.utc)
+    assert format_playlist([
+        "9:58am Before Start",
+        "10:00am At Start",
+        "10:05am First Real Track",
+    ], scheduled) == [
+        "0:00 At Start",
+        "0:05 First Real Track",
     ]
 
 
@@ -306,7 +430,7 @@ def test_weekday_frequency():
     assert runs_on_weekday("daily", None, 6)
 
 
-def test_monday_to_friday_weekday_option(tmp_path):
+def test_daily_mon_fri_frequency(tmp_path):
     app = make_app(tmp_path)
     client = app.test_client()
     client.post("/stations", data={
@@ -317,8 +441,7 @@ def test_monday_to_friday_weekday_option(tmp_path):
         "station_id": "1",
         "name": "Weekday Selection Show",
         "duration_minutes": "62",
-        "frequency": "weekly",
-        "weekday": "weekdays",
+        "frequency": "weekdays",
         "start_time": "08:00",
     })
     assert response.status_code == 302
@@ -332,6 +455,7 @@ def test_monday_to_friday_weekday_option(tmp_path):
         )
     assert show["frequency"] == "weekdays"
     assert show["weekday"] is None
+    assert b"Monday-through-Friday" not in page.data
 
 
 def test_paginated_lists_and_recording_time_format(tmp_path, monkeypatch):

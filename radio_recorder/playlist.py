@@ -65,10 +65,21 @@ def elapsed_playlist_line(
 
 
 def format_playlist(lines: list[str], scheduled_at: datetime) -> list[str]:
-    return [
+    formatted = [
         elapsed_playlist_line(line, scheduled_at, first=index == 0)
         for index, line in enumerate(lines)
     ]
+    zero_indexes = [
+        index for index, line in enumerate(formatted)
+        if line == "0:00" or line.startswith("0:00 ")
+    ]
+    if len(zero_indexes) > 1:
+        keep_index = zero_indexes[-1]
+        formatted = [
+            line for index, line in enumerate(formatted)
+            if index == keep_index or index not in zero_indexes
+        ]
+    return formatted
 
 
 def fetch_playlist(account_url: str, scheduled_at: datetime, duration_minutes: int) -> list[str]:

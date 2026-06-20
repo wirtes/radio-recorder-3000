@@ -416,12 +416,26 @@ def delete_show(show_id: int):
 
 @bp.post("/shows/<int:show_id>/record")
 def record_now(show_id: int):
+    try:
+        duration_minutes = int(request.form["duration_minutes"])
+        if duration_minutes < 1:
+            raise ValueError
+    except (KeyError, TypeError, ValueError):
+        flash("Recording duration must be at least one minute.", "error")
+        return redirect(url_for("main.index"))
     recording_id = execute(
         """
-        INSERT INTO recordings(show_id, scheduled_at, status, created_at, updated_at)
-        VALUES(?, ?, 'queued', ?, ?)
+        INSERT INTO recordings(
+            show_id, scheduled_at, status, duration_minutes, created_at, updated_at
+        ) VALUES(?, ?, 'queued', ?, ?, ?)
         """,
-        (show_id, datetime.now(timezone.utc).isoformat(), now_iso(), now_iso()),
+        (
+            show_id,
+            datetime.now(timezone.utc).isoformat(),
+            duration_minutes,
+            now_iso(),
+            now_iso(),
+        ),
     )
     Thread(target=record_show, args=(current_app._get_current_object(), recording_id), daemon=True).start()
     flash("Recording started.", "success")
