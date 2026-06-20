@@ -82,7 +82,7 @@ def init_db(app) -> None:
             db.execute("ALTER TABLE stations ADD COLUMN logo_path TEXT")
         if "call_letters" not in station_columns:
             db.execute("ALTER TABLE stations ADD COLUMN call_letters TEXT")
-            db.execute("UPDATE stations SET call_letters=substr(station_id, 1, 8)")
+            db.execute("UPDATE stations SET call_letters=station_id")
         recording_columns = {
             row["name"] for row in db.execute("PRAGMA table_info(recordings)").fetchall()
         }

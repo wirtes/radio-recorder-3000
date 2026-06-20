@@ -306,7 +306,7 @@ def test_station_logo_and_show_editing(tmp_path):
     logo_bytes.seek(0)
     response = client.post("/stations", data={
         "station_id": "WXYZ",
-        "call_letters": "WXYZ-FM",
+        "call_letters": "WXYZ-CALL-LETTERS",
         "stream_url": "https://example.test/live",
         "mastodon_url": "",
         "logo": (logo_bytes, "station.png"),
@@ -329,7 +329,8 @@ def test_station_logo_and_show_editing(tmp_path):
     assert b'id="station-logo-preview"' in edit_station_page.data
     assert b'src="/stations/1/logo"' in edit_station_page.data
     assert b'name="call_letters"' in edit_station_page.data
-    assert b'value="WXYZ-FM"' in edit_station_page.data
+    assert b'value="WXYZ-CALL-LETTERS"' in edit_station_page.data
+    assert b'maxlength="8"' not in edit_station_page.data
     response = client.post("/stations/1/update", data={
         "station_id": "WXYZ-FM",
         "call_letters": "WXYZ",

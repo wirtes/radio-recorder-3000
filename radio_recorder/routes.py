@@ -269,9 +269,7 @@ def schedule_fields(form) -> tuple[str, int | None]:
 def create_station():
     try:
         station_code = request.form["station_id"].strip()
-        call_letters = request.form.get("call_letters", "").strip() or station_code[:8]
-        if len(call_letters) > 8:
-            raise ValueError("Station call letters must be 8 characters or fewer.")
+        call_letters = request.form.get("call_letters", "").strip() or station_code
         logo_path = save_station_logo(request.files.get("logo"), station_code)
         execute(
             """
@@ -303,9 +301,7 @@ def update_station(station_id: int):
         return redirect(url_for("main.station_config"))
     try:
         station_code = request.form["station_id"].strip()
-        call_letters = request.form.get("call_letters", "").strip() or station_code[:8]
-        if len(call_letters) > 8:
-            raise ValueError("Station call letters must be 8 characters or fewer.")
+        call_letters = request.form.get("call_letters", "").strip() or station_code
         logo_path = save_station_logo(request.files.get("logo"), station_code)
         if logo_path is None:
             logo_path = station["logo_path"]
