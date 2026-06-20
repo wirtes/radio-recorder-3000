@@ -25,7 +25,7 @@ h1 span { color: var(--orange); }
 .eyebrow { margin-bottom: 5px; font-size: 10px; font-weight: 900; letter-spacing: 2px; }
 .recording-lamp { position:relative; padding:9px 15px 8px; border:3px solid #8d8983; border-radius:4px; color:#8b8882; background:#c8c5bf; box-shadow:inset 0 0 7px #aaa7a1, 0 2px 0 #dedbd5; font:900 13px/1 monospace; letter-spacing:2px; text-transform:uppercase; transition:color .2s, background .2s, box-shadow .2s; }
 .recording-lamp::before { content:""; position:absolute; inset:2px; border:1px solid rgba(255,255,255,.08); pointer-events:none; }
-.recording-lamp.active { color:#fff7f1; background:#d51e18; border-color:#71100c; text-shadow:0 0 5px #fff, 0 0 10px #ffb3a7; box-shadow:inset 0 0 10px #ff6c5d, 0 0 8px #e32920, 0 0 20px rgba(226,41,32,.65), 0 2px 0 #8e342e; }
+.recording-lamp.active { color:#fff5f5; background:#c40012; border-color:#650009; text-shadow:0 0 5px #fff, 0 0 10px #ff8d98; box-shadow:inset 0 0 10px #ff263b, 0 0 8px #d00014, 0 0 20px rgba(196,0,18,.72), 0 2px 0 #78000b; }
 main { width: min(1180px, calc(100% - 32px)); margin: 34px auto 80px; }
 .hero { min-height: 280px; display: flex; justify-content: space-between; align-items: end; gap: 30px; padding: clamp(28px,6vw,70px); margin-bottom: 24px; color: var(--cream); background: var(--ink); border-radius: 3px; overflow: hidden; position: relative; }
 .hero:after { content:""; position:absolute; width:280px; height:280px; right:-100px; top:-130px; border:42px solid var(--orange); border-radius:50%; }
