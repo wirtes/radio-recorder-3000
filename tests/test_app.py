@@ -223,19 +223,22 @@ def test_delivery_without_playlist_sidecar(tmp_path):
     with app.app_context():
         execute(
             """
-            INSERT INTO stations(station_id, stream_url, created_at)
-            VALUES('KVCU', 'https://example.test/live', ?)
+            INSERT INTO stations(
+                station_id, call_letters, stream_url, created_at
+            ) VALUES('KVCU Radio', 'KVCU', 'https://example.test/live', ?)
             """,
             (now_iso(),),
         )
+        artwork_path = tmp_path / "data" / "artwork" / "show.jpg"
+        Image.new("RGB", (8, 8), "purple").save(artwork_path, "JPEG")
         show_id = execute(
             """
             INSERT INTO shows(
-                station_id, name, duration_minutes, frequency,
+                station_id, name, duration_minutes, artwork_path, frequency,
                 start_time, weekday, enabled, created_at
-            ) VALUES(1, 'No Playlist Show', 62, 'daily', '10:00', NULL, 1, ?)
+            ) VALUES(1, 'No Playlist Show', 62, ?, 'daily', '10:00', NULL, 1, ?)
             """,
-            (now_iso(),),
+            (str(artwork_path), now_iso()),
         )
         work_dir = tmp_path / "data" / "work" / "1"
         work_dir.mkdir(parents=True)
@@ -257,12 +260,41 @@ def test_delivery_without_playlist_sidecar(tmp_path):
         )
         assert (destination / mp3_path.name).exists()
         assert list(destination.glob("*.txt")) == []
+        show_dir = destination.parent
+        assert (show_dir / "_info.yaml").read_text() == (
+            "show: No Playlist Show\n"
+            "station: KVCU Radio\n\n"
+            "tags:\n"
+            "  - KVCU\n\n"
+            "notes: |\n"
+            "  This is a longer human-editable note.\n"
+            "  It can span multiple lines.\n"
+        )
+        assert (show_dir / "artist.jpg").exists()
         recording = query(
             "SELECT playlist_path FROM recordings WHERE id=?",
             (recording_id,),
             one=True,
         )
         assert recording["playlist_path"] is None
+
+        (show_dir / "_info.yaml").write_text("user edited\n")
+        (show_dir / "artist.jpg").write_bytes(b"user artwork")
+        second_work_dir = tmp_path / "data" / "work" / "2"
+        second_work_dir.mkdir(parents=True)
+        second_mp3 = second_work_dir / "2026-06-20 No Playlist Show.mp3"
+        second_mp3.write_bytes(b"mp3")
+        second_id = execute(
+            """
+            INSERT INTO recordings(
+                show_id, scheduled_at, status, mp3_path, created_at, updated_at
+            ) VALUES(?, '2026-06-20T10:00:00+00:00', 'ready', ?, ?, ?)
+            """,
+            (show_id, str(second_mp3), now_iso(), now_iso()),
+        )
+        assert deliver_recording(second_id)
+        assert (show_dir / "_info.yaml").read_text() == "user edited\n"
+        assert (show_dir / "artist.jpg").read_bytes() == b"user artwork"
 
 
 def test_station_logo_and_show_editing(tmp_path):
@@ -274,6 +306,7 @@ def test_station_logo_and_show_editing(tmp_path):
     logo_bytes.seek(0)
     response = client.post("/stations", data={
         "station_id": "WXYZ",
+        "call_letters": "WXYZ-FM",
         "stream_url": "https://example.test/live",
         "mastodon_url": "",
         "logo": (logo_bytes, "station.png"),
@@ -295,8 +328,11 @@ def test_station_logo_and_show_editing(tmp_path):
     assert b'value="https://example.test/live"' in edit_station_page.data
     assert b'id="station-logo-preview"' in edit_station_page.data
     assert b'src="/stations/1/logo"' in edit_station_page.data
+    assert b'name="call_letters"' in edit_station_page.data
+    assert b'value="WXYZ-FM"' in edit_station_page.data
     response = client.post("/stations/1/update", data={
         "station_id": "WXYZ-FM",
+        "call_letters": "WXYZ",
         "stream_url": "https://example.test/updated",
         "mastodon_url": "https://mastodon.test/@wxyz",
     })
@@ -681,7 +717,22 @@ def test_navigation_and_new_defaults(tmp_path):
     assert storage_page.status_code == 200
     assert b'<div class="panel-title"><h3>Stations</h3></div>' in stations_page.data
     assert b'<div class="panel-title"><h3>Archive location</h3></div>' in storage_page.data
+    assert b'<div class="panel-title"><h3>Meta template</h3></div>' in storage_page.data
+    assert b'name="meta_template"' in storage_page.data
+    assert b"&lt;station-call-letters&gt;" in storage_page.data
+    assert b"&lt;show_name&gt;" in storage_page.data
     assert b"Final storage" not in storage_page.data
+
+    custom_template = "show: <show_name>\nstation: <station-call-letters>"
+    response = client.post(
+        "/settings/meta-template",
+        data={"meta_template": custom_template},
+    )
+    assert response.status_code == 302
+    with app.app_context():
+        assert query(
+            "SELECT value FROM settings WHERE key='meta_template'", one=True
+        )["value"] == custom_template
 
 
 def test_old_container_storage_default_migrates(tmp_path):
@@ -832,6 +883,12 @@ def test_legacy_show_schema_migrates_without_slug(tmp_path):
     with app.app_context():
         db = sqlite3.connect(database)
         columns = [row[1] for row in db.execute("PRAGMA table_info(shows)")]
+        station_columns = [
+            row[1] for row in db.execute("PRAGMA table_info(stations)")
+        ]
+        call_letters = db.execute(
+            "SELECT call_letters FROM stations"
+        ).fetchone()[0]
         show = db.execute("SELECT name, frequency FROM shows").fetchone()
         table_sql = db.execute(
             "SELECT sql FROM sqlite_master WHERE name='shows'"
@@ -839,6 +896,8 @@ def test_legacy_show_schema_migrates_without_slug(tmp_path):
         foreign_key_errors = db.execute("PRAGMA foreign_key_check").fetchall()
         db.close()
     assert "slug" not in columns
+    assert "call_letters" in station_columns
+    assert call_letters == "KVCU"
     assert show == ("Legacy Show", "weekly")
     assert "'weekdays'" in table_sql
     assert foreign_key_errors == []

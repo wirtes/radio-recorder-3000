@@ -116,6 +116,52 @@ def build_destination(final_root: Path, show_name: str, when: datetime) -> Path:
     return final_root / safe_name / album
 
 
+def render_meta_template(template: str, row) -> str:
+    weekday = ""
+    if row["weekday"] is not None:
+        weekday = [
+            "Monday", "Tuesday", "Wednesday", "Thursday",
+            "Friday", "Saturday", "Sunday",
+        ][row["weekday"]]
+    values = {
+        "<station-id>": row["station_id"] or "",
+        "<station-call-letters>": row["call_letters"] or "",
+        "<station-stream-url>": row["stream_url"] or "",
+        "<station-mastodon-url>": row["mastodon_url"] or "",
+        "<show_name>": row["name"] or "",
+        "<show-duration-minutes>": str(row["show_duration_minutes"]),
+        "<show-frequency>": row["frequency"] or "",
+        "<show-start-time>": row["start_time"] or "",
+        "<show-weekday>": weekday,
+    }
+    rendered = template
+    for token, value in values.items():
+        rendered = rendered.replace(token, value)
+    return rendered
+
+
+def initialize_show_archive(show_dir: Path, row, meta_template: str) -> None:
+    show_dir.mkdir(parents=True, exist_ok=True)
+    info_path = show_dir / "_info.yaml"
+    if not info_path.exists():
+        temporary_info = show_dir / "._info.yaml.partial"
+        temporary_info.write_text(
+            render_meta_template(meta_template, row).rstrip() + "\n",
+            encoding="utf-8",
+        )
+        temporary_info.replace(info_path)
+
+    has_jpg = any(
+        path.is_file() and path.suffix.lower() == ".jpg"
+        for path in show_dir.iterdir()
+    )
+    artwork_path = Path(row["artwork_path"]) if row["artwork_path"] else None
+    if not has_jpg and artwork_path and artwork_path.is_file():
+        temporary_artwork = show_dir / ".artist.jpg.partial"
+        shutil.copy2(artwork_path, temporary_artwork)
+        temporary_artwork.replace(show_dir / "artist.jpg")
+
+
 def add_id3_tags(
     mp3_path: Path,
     show_name: str,
@@ -236,8 +282,12 @@ def record_show(app, recording_id: int) -> None:
 def deliver_recording(recording_id: int) -> bool:
     row = query(
         """
-        SELECT r.*, s.name, s.frequency
-        FROM recordings r JOIN shows s ON s.id = r.show_id
+        SELECT r.*, s.name, s.duration_minutes AS show_duration_minutes,
+               s.frequency, s.start_time, s.weekday, s.artwork_path,
+               st.station_id, st.call_letters, st.stream_url, st.mastodon_url
+        FROM recordings r
+        JOIN shows s ON s.id = r.show_id
+        JOIN stations st ON st.id = s.station_id
         WHERE r.id=?
         """,
         (recording_id,),
@@ -246,11 +296,19 @@ def deliver_recording(recording_id: int) -> bool:
     if not row or not row["mp3_path"] or not Path(row["mp3_path"]).exists():
         return False
     final_dir_row = query("SELECT value FROM settings WHERE key='final_dir'", one=True)
+    meta_template_row = query(
+        "SELECT value FROM settings WHERE key='meta_template'", one=True
+    )
     final_root = Path(final_dir_row["value"])
     local_tz = ZoneInfo(os.environ.get("TZ", "UTC"))
     when = datetime.fromisoformat(row["scheduled_at"]).astimezone(local_tz)
     destination = build_destination(final_root, row["name"], when)
     try:
+        initialize_show_archive(
+            destination.parent,
+            row,
+            meta_template_row["value"],
+        )
         destination.mkdir(parents=True, exist_ok=True)
         source_strings = [row["mp3_path"]]
         if row["playlist_path"]:

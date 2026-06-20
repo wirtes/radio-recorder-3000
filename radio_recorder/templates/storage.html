@@ -10,4 +10,25 @@
   </form>
   <div class="path-preview"><span>Resulting layout</span><code>Share / Show Name / Show Name 2026 / 2026-06-18 Show Name.mp3</code></div>
 </section>
+<section class="panel config-panel">
+  <div class="panel-title"><h3>Meta template</h3></div>
+  <p class="config-description">Used to create <code>_info.yaml</code> when a show archive directory is first created.</p>
+  <form action="{{ url_for('main.update_meta_template') }}" method="post">
+    <label>YAML template<textarea class="meta-template" name="meta_template" required spellcheck="false">{{ meta_template }}</textarea></label>
+    <div class="template-help">
+      <strong>Available Station fields</strong>
+      <code>&lt;station-id&gt;</code>
+      <code>&lt;station-call-letters&gt;</code>
+      <code>&lt;station-stream-url&gt;</code>
+      <code>&lt;station-mastodon-url&gt;</code>
+      <strong>Available Show fields</strong>
+      <code>&lt;show_name&gt;</code>
+      <code>&lt;show-duration-minutes&gt;</code>
+      <code>&lt;show-frequency&gt;</code>
+      <code>&lt;show-start-time&gt;</code>
+      <code>&lt;show-weekday&gt;</code>
+    </div>
+    <button>Save template</button>
+  </form>
+</section>
 {% endblock %}

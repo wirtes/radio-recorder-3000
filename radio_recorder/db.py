@@ -7,10 +7,22 @@ from datetime import datetime, timezone
 from flask import current_app
 
 
+DEFAULT_META_TEMPLATE = """show: <show_name>
+station: <station-id>
+
+tags:
+  - <station-call-letters>
+
+notes: |
+  This is a longer human-editable note.
+  It can span multiple lines."""
+
+
 SCHEMA = """
 CREATE TABLE IF NOT EXISTS stations (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     station_id TEXT NOT NULL UNIQUE,
+    call_letters TEXT,
     stream_url TEXT NOT NULL,
     mastodon_url TEXT,
     logo_path TEXT,
@@ -68,6 +80,9 @@ def init_db(app) -> None:
         }
         if "logo_path" not in station_columns:
             db.execute("ALTER TABLE stations ADD COLUMN logo_path TEXT")
+        if "call_letters" not in station_columns:
+            db.execute("ALTER TABLE stations ADD COLUMN call_letters TEXT")
+            db.execute("UPDATE stations SET call_letters=substr(station_id, 1, 8)")
         recording_columns = {
             row["name"] for row in db.execute("PRAGMA table_info(recordings)").fetchall()
         }
@@ -116,6 +131,10 @@ def init_db(app) -> None:
         db.execute(
             "INSERT OR IGNORE INTO settings(key, value) VALUES('final_dir', ?)",
             (str(app.config["FINAL_DIR"]),),
+        )
+        db.execute(
+            "INSERT OR IGNORE INTO settings(key, value) VALUES('meta_template', ?)",
+            (DEFAULT_META_TEMPLATE,),
         )
         if str(app.config["FINAL_DIR"]) == "/server-share":
             db.execute(

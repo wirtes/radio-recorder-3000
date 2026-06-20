@@ -221,6 +221,9 @@ def storage_config():
         final_dir=query(
             "SELECT value FROM settings WHERE key='final_dir'", one=True
         )["value"],
+        meta_template=query(
+            "SELECT value FROM settings WHERE key='meta_template'", one=True
+        )["value"],
     )
 
 
@@ -266,15 +269,20 @@ def schedule_fields(form) -> tuple[str, int | None]:
 def create_station():
     try:
         station_code = request.form["station_id"].strip()
+        call_letters = request.form.get("call_letters", "").strip() or station_code[:8]
+        if len(call_letters) > 8:
+            raise ValueError("Station call letters must be 8 characters or fewer.")
         logo_path = save_station_logo(request.files.get("logo"), station_code)
         execute(
             """
             INSERT INTO stations(
-                station_id, stream_url, mastodon_url, logo_path, created_at
-            ) VALUES(?,?,?,?,?)
+                station_id, call_letters, stream_url, mastodon_url,
+                logo_path, created_at
+            ) VALUES(?,?,?,?,?,?)
             """,
             (
                 station_code,
+                call_letters,
                 request.form["stream_url"].strip(),
                 request.form.get("mastodon_url", "").strip() or None,
                 logo_path,
@@ -295,17 +303,22 @@ def update_station(station_id: int):
         return redirect(url_for("main.station_config"))
     try:
         station_code = request.form["station_id"].strip()
+        call_letters = request.form.get("call_letters", "").strip() or station_code[:8]
+        if len(call_letters) > 8:
+            raise ValueError("Station call letters must be 8 characters or fewer.")
         logo_path = save_station_logo(request.files.get("logo"), station_code)
         if logo_path is None:
             logo_path = station["logo_path"]
         execute(
             """
             UPDATE stations
-            SET station_id=?, stream_url=?, mastodon_url=?, logo_path=?
+            SET station_id=?, call_letters=?, stream_url=?, mastodon_url=?,
+                logo_path=?
             WHERE id=?
             """,
             (
                 station_code,
+                call_letters,
                 request.form["stream_url"].strip(),
                 request.form.get("mastodon_url", "").strip() or None,
                 logo_path,
@@ -547,4 +560,18 @@ def update_settings():
     else:
         execute("UPDATE settings SET value=? WHERE key='final_dir'", (final_dir,))
         flash("Archive location updated.", "success")
+    return redirect(url_for("main.storage_config"))
+
+
+@bp.post("/settings/meta-template")
+def update_meta_template():
+    meta_template = request.form["meta_template"].strip()
+    if not meta_template:
+        flash("Meta template cannot be empty.", "error")
+    else:
+        execute(
+            "UPDATE settings SET value=? WHERE key='meta_template'",
+            (meta_template,),
+        )
+        flash("Meta template updated.", "success")
     return redirect(url_for("main.storage_config"))

@@ -5,7 +5,10 @@
   <p class="config-description">Manage reusable stream and playlist sources.</p>
   <form id="station-form" class="{{ 'editing-form' if edit_station else '' }}" action="{{ url_for('main.update_station', station_id=edit_station.id) if edit_station else url_for('main.create_station') }}" method="post" enctype="multipart/form-data">
     {% if edit_station %}<div class="edit-banner"><strong>Editing {{ edit_station.station_id }}</strong><a href="{{ url_for('main.station_config') }}#station-form">Cancel</a></div>{% endif %}
-    <label>Station ID<input name="station_id" required placeholder="KVCU" value="{{ edit_station.station_id if edit_station else '' }}"></label>
+    <div class="station-id-row">
+      <label>Station ID<input name="station_id" required placeholder="KVCU Radio" value="{{ edit_station.station_id if edit_station else '' }}"></label>
+      <label>Station Call Letters<input name="call_letters" required maxlength="8" size="8" placeholder="KVCU" value="{{ edit_station.call_letters if edit_station and edit_station.call_letters else '' }}"></label>
+    </div>
     <label>Stream URL<input name="stream_url" type="url" required placeholder="https://stream.example/live" value="{{ edit_station.stream_url if edit_station else '' }}"></label>
     <label>Mastodon playlist account<input name="mastodon_url" type="url" placeholder="https://mastodon.social/@station" value="{{ edit_station.mastodon_url if edit_station and edit_station.mastodon_url else '' }}"></label>
     <label>Station logo
