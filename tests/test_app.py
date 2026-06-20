@@ -586,8 +586,13 @@ def test_navigation_and_new_defaults(tmp_path):
     assert b">02<" not in dashboard.data
     assert b">03<" not in dashboard.data
     assert b">04<" not in dashboard.data
-    assert client.get("/config/stations").status_code == 200
-    assert client.get("/config/storage").status_code == 200
+    stations_page = client.get("/config/stations")
+    storage_page = client.get("/config/storage")
+    assert stations_page.status_code == 200
+    assert storage_page.status_code == 200
+    assert b'<div class="panel-title"><h3>Stations</h3></div>' in stations_page.data
+    assert b'<div class="panel-title"><h3>Archive location</h3></div>' in storage_page.data
+    assert b"Final storage" not in storage_page.data
 
 
 def test_old_container_storage_default_migrates(tmp_path):

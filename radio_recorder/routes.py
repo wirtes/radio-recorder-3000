@@ -522,5 +522,5 @@ def update_settings():
         flash("Final directory cannot be empty.", "error")
     else:
         execute("UPDATE settings SET value=? WHERE key='final_dir'", (final_dir,))
-        flash("Final storage location updated.", "success")
+        flash("Archive location updated.", "success")
     return redirect(url_for("main.storage_config"))
