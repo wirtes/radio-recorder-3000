@@ -152,6 +152,11 @@
   const toggleTitle = document.querySelector('#toggle-show-title');
   const toggleMessage = document.querySelector('#toggle-show-message');
   const toggleConfirm = document.querySelector('#confirm-toggle-show');
+  const savedToggleScroll = sessionStorage.getItem('show-toggle-scroll');
+  if (savedToggleScroll !== null) {
+    sessionStorage.removeItem('show-toggle-scroll');
+    requestAnimationFrame(() => window.scrollTo(0, Number(savedToggleScroll)));
+  }
   let pendingToggleForm = null;
   document.querySelectorAll('.confirm-toggle').forEach((form) => {
     form.addEventListener('submit', (event) => {
@@ -170,6 +175,7 @@
   });
   toggleDialog.addEventListener('close', () => {
     if (toggleDialog.returnValue === 'confirm' && pendingToggleForm) {
+      sessionStorage.setItem('show-toggle-scroll', String(window.scrollY));
       pendingToggleForm.submit();
     }
     pendingToggleForm = null;

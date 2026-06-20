@@ -421,7 +421,6 @@ def toggle_show(show_id: int):
             "main.index",
             station=station_filter,
             highlight_show=show_id,
-            _anchor=f"show-{show_id}",
         )
     )
 

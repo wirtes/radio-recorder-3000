@@ -80,8 +80,9 @@ def test_show_activation_toggle(tmp_path):
     assert b"Pause" in client.get("/").data
     response = client.post("/shows/1/toggle")
     assert response.headers["Location"].endswith(
-        "?highlight_show=1#show-1"
+        "?highlight_show=1"
     )
+    assert "#show-" not in response.headers["Location"]
     highlighted = client.get(response.headers["Location"])
     assert b"show-highlight" in highlighted.data
     assert b"Toggle Show paused." in highlighted.data
@@ -91,7 +92,7 @@ def test_show_activation_toggle(tmp_path):
     assert b"Unpause" in page.data
     response = client.post("/shows/1/toggle")
     assert response.headers["Location"].endswith(
-        "?highlight_show=1#show-1"
+        "?highlight_show=1"
     )
     assert b"Pause" in client.get("/").data
 
@@ -223,6 +224,7 @@ def test_station_logo_and_show_editing(tmp_path):
     station_page = client.get("/config/stations")
     assert b"WXYZ-FM" in station_page.data
     assert b"https://example.test/updated" in station_page.data
+    assert b'class="logo-update"' not in station_page.data
     assert b'data-delete-type="station"' in station_page.data
 
     client.post("/shows", data={

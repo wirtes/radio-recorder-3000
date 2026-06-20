@@ -22,7 +22,6 @@
       <div class="station-identity">{% if station.logo_path %}<img class="station-logo" src="{{ url_for('main.station_logo', station_id=station.id) }}" alt="{{ station.station_id }} logo">{% else %}<span class="station-logo fallback">{{ station.station_id[:2] }}</span>{% endif %}<div><strong>{{ station.station_id }}</strong><small>{{ station.stream_url }}</small></div></div>
       <div class="station-actions">
         <a class="button quiet" href="{{ url_for('main.station_config', edit_station=station.id) }}#station-form">Edit</a>
-        <form class="logo-update" action="{{ url_for('main.update_station_logo', station_id=station.id) }}" method="post" enctype="multipart/form-data"><label class="button quiet logo-picker">Logo<input name="logo" type="file" accept=".jpg,.jpeg,.png,.webp,image/jpeg,image/png,image/webp" onchange="this.form.submit()"></label></form>
         <form class="confirm-delete" data-delete-name="{{ station.station_id }}" data-delete-type="station" action="{{ url_for('main.delete_station', station_id=station.id) }}" method="post"><button class="quiet danger">Delete</button></form>
       </div>
     </article>
