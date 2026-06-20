@@ -18,7 +18,9 @@
       <h1>Radio Recorder <span>3000</span></h1>
     </a>
     <div class="header-actions">
-      <div class="status"><i></i> Scheduler online</div>
+      <div id="recording-lamp" class="recording-lamp" role="status" aria-live="polite" aria-label="Not recording">
+        <span>Recording</span>
+      </div>
       <details class="menu">
         <summary aria-label="Open navigation menu"><span></span><span></span><span></span></summary>
         <nav>
@@ -35,5 +37,35 @@
     {% endfor %}
     {% block content %}{% endblock %}
   </main>
+  <script>
+    (() => {
+      const lamp = document.querySelector('#recording-lamp');
+      if (!lamp) return;
+      const updateRecordingLamp = async () => {
+        try {
+          const response = await fetch('{{ url_for("main.recording_status") }}', {
+            cache: 'no-store',
+          });
+          if (!response.ok) throw new Error('Recording status unavailable');
+          const status = await response.json();
+          lamp.classList.toggle('active', status.recording);
+          const showNames = status.shows || [];
+          lamp.setAttribute(
+            'aria-label',
+            status.recording
+              ? `Recording ${showNames.join(', ')}`
+              : 'Not recording'
+          );
+          lamp.title = status.recording ? showNames.join(', ') : 'No show is recording';
+        } catch (error) {
+          lamp.classList.remove('active');
+          lamp.setAttribute('aria-label', 'Recording status unavailable');
+          lamp.title = 'Recording status unavailable';
+        }
+      };
+      updateRecordingLamp();
+      window.setInterval(updateRecordingLamp, 5000);
+    })();
+  </script>
 </body>
 </html>

@@ -12,6 +12,7 @@ from flask import (
     Blueprint,
     current_app,
     flash,
+    jsonify,
     redirect,
     render_template,
     request,
@@ -70,6 +71,23 @@ def pagination_params(prefix: str, total: int, default_per_page: int = 10) -> di
         "total": total,
         "offset": (page - 1) * per_page,
     }
+
+
+@bp.get("/recording-status")
+def recording_status():
+    rows = query(
+        """
+        SELECT s.name
+        FROM recordings r
+        JOIN shows s ON s.id = r.show_id
+        WHERE r.status = 'recording'
+        ORDER BY r.created_at
+        """
+    )
+    return jsonify(
+        recording=bool(rows),
+        shows=[row["name"] for row in rows],
+    )
 
 
 @bp.get("/")

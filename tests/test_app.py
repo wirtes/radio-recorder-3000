@@ -138,6 +138,45 @@ def test_record_now_duration_override(tmp_path, monkeypatch):
     assert count == 1
 
 
+def test_recording_status_lamp(tmp_path):
+    app = make_app(tmp_path)
+    client = app.test_client()
+    client.post("/stations", data={
+        "station_id": "KVCU",
+        "stream_url": "https://example.test/live",
+    })
+    client.post("/shows", data={
+        "station_id": "1",
+        "name": "Live Show",
+        "duration_minutes": "62",
+        "frequency": "daily",
+        "start_time": "10:00",
+    })
+
+    page = client.get("/")
+    assert b'id="recording-lamp"' in page.data
+    assert b"Scheduler online" not in page.data
+    assert client.get("/recording-status").get_json() == {
+        "recording": False,
+        "shows": [],
+    }
+
+    with app.app_context():
+        timestamp = now_iso()
+        execute(
+            """
+            INSERT INTO recordings(
+                show_id, scheduled_at, status, created_at, updated_at
+            ) VALUES(1, ?, 'recording', ?, ?)
+            """,
+            (timestamp, timestamp, timestamp),
+        )
+    assert client.get("/recording-status").get_json() == {
+        "recording": True,
+        "shows": ["Live Show"],
+    }
+
+
 def test_delivery_without_playlist_sidecar(tmp_path):
     app = make_app(tmp_path)
     with app.app_context():
