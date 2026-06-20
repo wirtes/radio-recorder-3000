@@ -73,8 +73,8 @@ button.danger { color:#a12b1d; }
 .station-logo.fallback { display:grid; place-items:center; color:var(--cream); background:var(--ink); font:900 13px monospace; text-transform:uppercase; }
 .station-actions { display:flex; align-items:center; gap:8px; }
 .station-actions form { display:block; }
-.station-id-row { display:grid; grid-template-columns:minmax(0,1fr) 8ch; gap:14px; }
-.station-id-row input[name="call_letters"] { width:8ch; padding-left:7px; padding-right:7px; }
+.station-id-row { display:grid; grid-template-columns:minmax(0,1fr) 24ch; gap:14px; }
+.station-id-row input[name="call_letters"] { width:24ch; padding-left:7px; padding-right:7px; }
 .logo-picker { display:block; }
 .logo-picker input { position:absolute; width:1px; height:1px; opacity:0; pointer-events:none; }
 .path-preview { margin-top:30px; padding:18px; background:var(--ink); color:var(--cream); }
