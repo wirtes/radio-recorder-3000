@@ -56,6 +56,7 @@ def index():
     if edit_show_id:
         edit_show = query("SELECT * FROM shows WHERE id=?", (edit_show_id,), one=True)
     station_filter = request.args.get("station", type=int)
+    highlight_show = request.args.get("highlight_show", type=int)
     show_params: tuple = ()
     show_where = ""
     if station_filter:
@@ -114,6 +115,7 @@ def index():
         page_sizes=PAGE_SIZES,
         active_tab=active_tab,
         station_filter=station_filter,
+        highlight_show=highlight_show,
         edit_show=edit_show,
     )
 
@@ -403,8 +405,25 @@ def update_show(show_id: int):
 
 @bp.post("/shows/<int:show_id>/toggle")
 def toggle_show(show_id: int):
-    execute("UPDATE shows SET enabled = CASE enabled WHEN 1 THEN 0 ELSE 1 END WHERE id=?", (show_id,))
-    return redirect(url_for("main.index"))
+    show = query("SELECT name, enabled FROM shows WHERE id=?", (show_id,), one=True)
+    if not show:
+        flash("Show not found.", "error")
+        return redirect(url_for("main.index"))
+    enabled = 0 if show["enabled"] else 1
+    execute("UPDATE shows SET enabled=? WHERE id=?", (enabled, show_id))
+    flash(
+        f"{show['name']} {'unpaused' if enabled else 'paused'}.",
+        "success",
+    )
+    station_filter = request.args.get("station", type=int)
+    return redirect(
+        url_for(
+            "main.index",
+            station=station_filter,
+            highlight_show=show_id,
+            _anchor=f"show-{show_id}",
+        )
+    )
 
 
 @bp.post("/shows/<int:show_id>/delete")

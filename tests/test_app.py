@@ -77,12 +77,23 @@ def test_show_activation_toggle(tmp_path):
         "frequency": "daily",
         "start_time": "10:00",
     })
-    assert b"Deactivate" in client.get("/").data
-    client.post("/shows/1/toggle")
+    assert b"Pause" in client.get("/").data
+    response = client.post("/shows/1/toggle")
+    assert response.headers["Location"].endswith(
+        "?highlight_show=1#show-1"
+    )
+    highlighted = client.get(response.headers["Location"])
+    assert b"show-highlight" in highlighted.data
+    assert b"Toggle Show paused." in highlighted.data
     page = client.get("/")
     assert b"Toggle Show" in page.data
-    assert b"Inactive" in page.data
-    assert b"Activate" in page.data
+    assert b"Paused" in page.data
+    assert b"Unpause" in page.data
+    response = client.post("/shows/1/toggle")
+    assert response.headers["Location"].endswith(
+        "?highlight_show=1#show-1"
+    )
+    assert b"Pause" in client.get("/").data
 
 
 def test_record_now_duration_override(tmp_path, monkeypatch):
@@ -201,6 +212,8 @@ def test_station_logo_and_show_editing(tmp_path):
     edit_station_page = client.get("/config/stations?edit_station=1")
     assert b"Editing WXYZ" in edit_station_page.data
     assert b'value="https://example.test/live"' in edit_station_page.data
+    assert b'id="station-logo-preview"' in edit_station_page.data
+    assert b'src="/stations/1/logo"' in edit_station_page.data
     response = client.post("/stations/1/update", data={
         "station_id": "WXYZ-FM",
         "stream_url": "https://example.test/updated",

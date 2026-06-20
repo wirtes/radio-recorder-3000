@@ -7,7 +7,13 @@
     <label>Station ID<input name="station_id" required placeholder="KVCU" value="{{ edit_station.station_id if edit_station else '' }}"></label>
     <label>Stream URL<input name="stream_url" type="url" required placeholder="https://stream.example/live" value="{{ edit_station.stream_url if edit_station else '' }}"></label>
     <label>Mastodon playlist account<input name="mastodon_url" type="url" placeholder="https://mastodon.social/@station" value="{{ edit_station.mastodon_url if edit_station and edit_station.mastodon_url else '' }}"></label>
-    <label>Station logo<input name="logo" type="file" accept=".jpg,.jpeg,.png,.webp,image/jpeg,image/png,image/webp"><small>{{ 'Leave empty to keep current logo.' if edit_station and edit_station.logo_path else '' }}</small></label>
+    <label>Station logo
+      <span class="artwork-input-row">
+        <img id="station-logo-preview" class="station-form-preview {{ '' if edit_station and edit_station.logo_path else 'empty' }}" {% if edit_station and edit_station.logo_path %}src="{{ url_for('main.station_logo', station_id=edit_station.id) }}"{% endif %} alt="Station logo preview">
+        <input id="station-logo-input" name="logo" type="file" accept=".jpg,.jpeg,.png,.webp,image/jpeg,image/png,image/webp">
+      </span>
+      <small>{{ 'Leave empty to keep current logo.' if edit_station and edit_station.logo_path else '' }}</small>
+    </label>
     <button>{{ 'Update station' if edit_station else 'Add station' }}</button>
   </form>
   <div class="items">
@@ -24,5 +30,17 @@
   </div>
 </section>
 {% include "_delete_modal.html" %}
+<script>
+  const stationLogoInput = document.querySelector('#station-logo-input');
+  const stationLogoPreview = document.querySelector('#station-logo-preview');
+  if (stationLogoInput && stationLogoPreview) {
+    stationLogoInput.addEventListener('change', () => {
+      const file = stationLogoInput.files && stationLogoInput.files[0];
+      if (!file) return;
+      stationLogoPreview.src = URL.createObjectURL(file);
+      stationLogoPreview.classList.remove('empty');
+    });
+  }
+</script>
 {% include "_delete_script.html" %}
 {% endblock %}

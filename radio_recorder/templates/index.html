@@ -46,7 +46,7 @@
 
   <div class="show-list">
     {% for show in shows %}
-    <article class="{{ '' if show.enabled else 'disabled' }}">
+    <article id="show-{{ show.id }}" class="{{ '' if show.enabled else 'disabled' }} {{ 'show-highlight' if highlight_show == show.id else '' }}">
       <div class="show-visual">
         {% if show.artwork_path %}<img class="show-artwork" src="{{ url_for('main.show_artwork', show_id=show.id) }}" alt="{{ show.name }} artwork">{% else %}<span class="show-artwork fallback">♪</span>{% endif %}
         <span class="show-station-icon">
@@ -57,10 +57,10 @@
           {% endif %}
         </span>
       </div>
-      <div class="show-main"><strong>{{ show.name }} <span>({{ show.station_code }})</span></strong><small>{{ show.schedule_description }}{% if not show.enabled %} • Inactive{% endif %}</small></div>
+      <div class="show-main"><strong>{{ show.name }} <span>({{ show.station_code }})</span></strong><small>{{ show.schedule_description }}{% if not show.enabled %} • Paused{% endif %}</small></div>
       <a class="button quiet" href="{{ url_for('main.index', edit_show=show.id, station=station_filter) if station_filter else url_for('main.index', edit_show=show.id) }}#show-form">Edit</a>
       <button class="quiet record-now-button" type="button" data-record-url="{{ url_for('main.record_now', show_id=show.id) }}" data-show-name="{{ show.name }}" data-duration="{{ show.duration_minutes }}">Record now</button>
-      <form action="{{ url_for('main.toggle_show', show_id=show.id) }}" method="post"><button class="quiet">{{ 'Deactivate' if show.enabled else 'Activate' }}</button></form>
+      <form class="confirm-toggle" data-show-name="{{ show.name }}" data-toggle-action="{{ 'pause' if show.enabled else 'unpause' }}" action="{{ url_for('main.toggle_show', show_id=show.id, station=station_filter) if station_filter else url_for('main.toggle_show', show_id=show.id) }}" method="post"><button class="quiet">{{ 'Pause' if show.enabled else 'Unpause' }}</button></form>
       <form class="confirm-delete" data-delete-name="{{ show.name }}" data-delete-type="show" action="{{ url_for('main.delete_show', show_id=show.id) }}" method="post"><button class="quiet danger">Delete</button></form>
     </article>
     {% else %}<p class="empty">The schedule is quiet.</p>{% endfor %}
@@ -105,6 +105,17 @@
     </div>
   </form>
 </dialog>
+<dialog id="toggle-show-dialog" class="delete-modal">
+  <form method="dialog">
+    <p class="eyebrow">CONFIRM SCHEDULE CHANGE</p>
+    <h3 id="toggle-show-title">Pause this show?</h3>
+    <p id="toggle-show-message"></p>
+    <div class="modal-actions">
+      <button value="cancel" class="quiet">Cancel</button>
+      <button value="confirm" id="confirm-toggle-show">Confirm</button>
+    </div>
+  </form>
+</dialog>
 <script>
   const frequency = document.querySelector('#frequency');
   const weekday = document.querySelector('#weekday-select');
@@ -136,6 +147,32 @@
   });
   document.querySelector('#cancel-record-now')?.addEventListener('click', () => {
     recordDialog.close();
+  });
+  const toggleDialog = document.querySelector('#toggle-show-dialog');
+  const toggleTitle = document.querySelector('#toggle-show-title');
+  const toggleMessage = document.querySelector('#toggle-show-message');
+  const toggleConfirm = document.querySelector('#confirm-toggle-show');
+  let pendingToggleForm = null;
+  document.querySelectorAll('.confirm-toggle').forEach((form) => {
+    form.addEventListener('submit', (event) => {
+      event.preventDefault();
+      pendingToggleForm = form;
+      const action = form.dataset.toggleAction;
+      const showName = form.dataset.showName;
+      const pausing = action === 'pause';
+      toggleTitle.textContent = `${pausing ? 'Pause' : 'Unpause'} this show?`;
+      toggleMessage.textContent = pausing
+        ? `“${showName}” will remain in the list but will not record on its schedule.`
+        : `“${showName}” will resume recording on its schedule.`;
+      toggleConfirm.textContent = pausing ? 'Pause show' : 'Unpause show';
+      toggleDialog.showModal();
+    });
+  });
+  toggleDialog.addEventListener('close', () => {
+    if (toggleDialog.returnValue === 'confirm' && pendingToggleForm) {
+      pendingToggleForm.submit();
+    }
+    pendingToggleForm = null;
   });
 </script>
 {% include "_delete_script.html" %}
