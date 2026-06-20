@@ -92,7 +92,9 @@ button.danger { color:#a12b1d; }
 .editing-form { padding:18px; border:2px solid var(--orange); background:#fff6df; }
 .edit-banner { grid-column:1/-1; display:flex; justify-content:space-between; align-items:center; padding-bottom:12px; border-bottom:1px solid var(--line); }
 .edit-banner a { color:var(--orange); font-size:12px; font-weight:900; text-transform:uppercase; }
-.show-list { margin-top:28px; }
+.show-list-heading { margin-top:28px; padding-bottom:9px; border-bottom:2px solid var(--ink); }
+.show-list-heading h4 { margin:0; font:800 18px Georgia,serif; }
+.show-list { margin-top:0; }
 .show-filter { display:flex; justify-content:flex-end; margin:22px 0 18px; padding-top:18px; border-top:1px solid var(--line); }
 .show-filter label { min-width:220px; }
 .show-list article.disabled { opacity:.5; }

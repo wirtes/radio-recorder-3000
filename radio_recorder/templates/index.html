@@ -44,6 +44,7 @@
     <p class="empty">Configure a station from the menu before scheduling a show.</p>
   {% endif %}
 
+  <div class="show-list-heading"><h4>Up next</h4></div>
   <div class="show-list">
     {% for show in shows %}
     <article id="show-{{ show.id }}" data-show-id="{{ show.id }}" class="{{ '' if show.enabled else 'disabled' }} {{ 'show-highlight' if highlight_show == show.id else '' }} {{ 'recording-now' if show.is_recording else '' }}">
