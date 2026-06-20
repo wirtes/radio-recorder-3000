@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import os
 import math
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from threading import Thread
 from uuid import uuid4
@@ -26,6 +26,32 @@ from .processing import record_show
 
 bp = Blueprint("main", __name__)
 PAGE_SIZES = (10, 25, 100)
+
+
+def current_local_time() -> datetime:
+    return datetime.now(ZoneInfo(os.environ.get("TZ", "UTC")))
+
+
+def next_show_start(show, now_local: datetime) -> tuple[datetime, bool]:
+    hour, minute = map(int, show["start_time"].split(":"))
+    duration = timedelta(minutes=show["duration_minutes"])
+    for offset in range(8):
+        candidate = (now_local + timedelta(days=offset)).replace(
+            hour=hour, minute=minute, second=0, microsecond=0
+        )
+        weekday = candidate.weekday()
+        runs_today = (
+            show["frequency"] == "daily"
+            or (show["frequency"] == "weekdays" and weekday < 5)
+            or (show["frequency"] == "weekly" and show["weekday"] == weekday)
+        )
+        if not runs_today:
+            continue
+        if candidate <= now_local < candidate + duration:
+            return candidate, True
+        if candidate > now_local:
+            return candidate, False
+    raise ValueError(f"Could not calculate next run for show {show['id']}")
 
 
 def pagination_params(prefix: str, total: int, default_per_page: int = 10) -> dict:
@@ -68,21 +94,32 @@ def index():
             SELECT s.*, st.station_id AS station_code, st.logo_path AS station_logo_path
             FROM shows s JOIN stations st ON st.id=s.station_id
             {show_where}
-            ORDER BY
-                CASE WHEN s.frequency = 'weekly' THEN 1 ELSE 0 END,
-                    CASE
-                        WHEN s.frequency != 'weekly' THEN -1
-                        WHEN s.weekday = 6 THEN 0
-                        ELSE s.weekday + 1
-                    END,
-                s.start_time,
-                s.name
             """,
             show_params,
         )
     ]
+    active_recording_ids = {
+        row["show_id"]
+        for row in query(
+            "SELECT DISTINCT show_id FROM recordings WHERE status IN ('queued', 'recording')"
+        )
+    }
+    now_local = current_local_time()
     for show in shows:
         show["schedule_description"] = schedule_description(show)
+        show["next_start"], show["is_current"] = next_show_start(show, now_local)
+    shows.sort(
+        key=lambda show: (
+            0
+            if show["id"] in active_recording_ids
+            or (show["enabled"] and show["is_current"])
+            else 1
+            if show["enabled"]
+            else 2,
+            show["next_start"],
+            show["name"].casefold(),
+        )
+    )
 
     recording_total = query(
         "SELECT COUNT(*) AS count FROM recordings", one=True

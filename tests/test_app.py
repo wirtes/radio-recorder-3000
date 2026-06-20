@@ -568,8 +568,12 @@ def test_old_container_storage_default_migrates(tmp_path):
     assert b'value="/server-share"' in page.data
 
 
-def test_shows_order_by_schedule(tmp_path):
+def test_shows_order_by_schedule(tmp_path, monkeypatch):
     app = make_app(tmp_path)
+    fixed_now = datetime(2026, 6, 19, 8, 30, tzinfo=timezone.utc)
+    monkeypatch.setattr(
+        "radio_recorder.routes.current_local_time", lambda: fixed_now
+    )
     client = app.test_client()
     client.post("/stations", data={
         "station_id": "KVCU",
@@ -581,6 +585,7 @@ def test_shows_order_by_schedule(tmp_path):
             ("Friday Late", "weekly", "14:00", 4),
             ("Tuesday Early", "weekly", "08:00", 1),
             ("Friday Early", "weekly", "09:00", 4),
+            ("Currently Recording", "weekly", "08:00", 4),
             ("Sunday Show", "weekly", "12:00", 6),
             ("Daily Late", "daily", "11:00", None),
             ("Weekday Early", "weekdays", "07:00", None),
@@ -598,8 +603,8 @@ def test_shows_order_by_schedule(tmp_path):
 
     page = client.get("/").data
     names = [
-        b"Weekday Early", b"Daily Late", b"Sunday Show", b"Tuesday Early",
-        b"Friday Early", b"Friday Late",
+        b"Currently Recording", b"Friday Early", b"Daily Late",
+        b"Friday Late", b"Sunday Show", b"Weekday Early", b"Tuesday Early",
     ]
     positions = [page.index(name) for name in names]
     assert positions == sorted(positions)
