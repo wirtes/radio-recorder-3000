@@ -46,7 +46,7 @@
 
   <div class="show-list">
     {% for show in shows %}
-    <article id="show-{{ show.id }}" class="{{ '' if show.enabled else 'disabled' }} {{ 'show-highlight' if highlight_show == show.id else '' }}">
+    <article id="show-{{ show.id }}" data-show-id="{{ show.id }}" class="{{ '' if show.enabled else 'disabled' }} {{ 'show-highlight' if highlight_show == show.id else '' }} {{ 'recording-now' if show.is_recording else '' }}">
       <div class="show-visual">
         {% if show.artwork_path %}<img class="show-artwork" src="{{ url_for('main.show_artwork', show_id=show.id) }}" alt="{{ show.name }} artwork">{% else %}<span class="show-artwork fallback">♪</span>{% endif %}
         <span class="show-station-icon">
@@ -57,7 +57,11 @@
           {% endif %}
         </span>
       </div>
-      <div class="show-main"><strong>{{ show.name }} <span>({{ show.station_code }})</span></strong><small>{{ show.schedule_description }}{% if not show.enabled %} • Paused{% endif %}</small></div>
+      <div class="show-main">
+        <strong>{{ show.name }} <span>({{ show.station_code }})</span></strong>
+        <small>{{ show.schedule_description }}{% if not show.enabled %} • Paused{% endif %}</small>
+        <span class="show-recording-message" {% if not show.is_recording %}hidden{% endif %}>● Recording now</span>
+      </div>
       <a class="button quiet" href="{{ url_for('main.index', edit_show=show.id, station=station_filter) if station_filter else url_for('main.index', edit_show=show.id) }}#show-form">Edit</a>
       <button class="quiet record-now-button" type="button" data-record-url="{{ url_for('main.record_now', show_id=show.id) }}" data-show-name="{{ show.name }}" data-duration="{{ show.duration_minutes }}">Record now</button>
       <form class="confirm-toggle" data-show-name="{{ show.name }}" data-toggle-action="{{ 'pause' if show.enabled else 'unpause' }}" action="{{ url_for('main.toggle_show', show_id=show.id, station=station_filter) if station_filter else url_for('main.toggle_show', show_id=show.id) }}" method="post"><button class="quiet">{{ 'Pause' if show.enabled else 'Unpause' }}</button></form>

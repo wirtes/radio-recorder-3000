@@ -165,6 +165,7 @@ def test_recording_status_lamp(tmp_path):
     assert b"Scheduler online" not in page.data
     assert client.get("/recording-status").get_json() == {
         "recording": False,
+        "show_ids": [],
         "shows": [],
     }
 
@@ -180,8 +181,13 @@ def test_recording_status_lamp(tmp_path):
         )
     assert client.get("/recording-status").get_json() == {
         "recording": True,
+        "show_ids": [1],
         "shows": ["Live Show"],
     }
+    recording_page = client.get("/")
+    assert b'class="show-recording-message"' in recording_page.data
+    assert b"recording-now" in recording_page.data
+    assert b"Recording now" in recording_page.data
 
 
 def test_capture_stream_reconnects_and_concatenates_segments(tmp_path, monkeypatch):

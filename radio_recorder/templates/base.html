@@ -50,6 +50,15 @@
           const status = await response.json();
           lamp.classList.toggle('active', status.recording);
           const showNames = status.shows || [];
+          const recordingShowIds = new Set(
+            (status.show_ids || []).map((showId) => String(showId))
+          );
+          document.querySelectorAll('.show-list [data-show-id]').forEach((row) => {
+            const isRecording = recordingShowIds.has(row.dataset.showId);
+            row.classList.toggle('recording-now', isRecording);
+            const message = row.querySelector('.show-recording-message');
+            if (message) message.hidden = !isRecording;
+          });
           lamp.setAttribute(
             'aria-label',
             status.recording

@@ -96,6 +96,9 @@ button.danger { color:#a12b1d; }
 .show-filter { display:flex; justify-content:flex-end; margin:22px 0 18px; padding-top:18px; border-top:1px solid var(--line); }
 .show-filter label { min-width:220px; }
 .show-list article.disabled { opacity:.5; }
+.show-list article.recording-now { padding-left:14px; padding-right:14px; border:2px solid #a60010; background:#fff0f1; box-shadow:0 0 0 3px rgba(196,0,18,.12); }
+.show-recording-message { display:block; margin-top:7px; color:#b00011; font:900 11px/1 monospace; letter-spacing:1px; text-transform:uppercase; }
+.show-recording-message[hidden] { display:none; }
 .show-list article.show-highlight { animation:show-flash 1.8s ease-out; }
 @keyframes show-flash {
   0%,35% { background:#ffe08a; box-shadow:0 0 0 5px #ffe08a; }

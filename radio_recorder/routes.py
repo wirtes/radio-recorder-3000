@@ -85,7 +85,7 @@ def pagination_params(prefix: str, total: int, default_per_page: int = 10) -> di
 def recording_status():
     rows = query(
         """
-        SELECT s.name
+        SELECT s.id, s.name
         FROM recordings r
         JOIN shows s ON s.id = r.show_id
         WHERE r.status = 'recording'
@@ -95,6 +95,7 @@ def recording_status():
     return jsonify(
         recording=bool(rows),
         shows=[row["name"] for row in rows],
+        show_ids=[row["id"] for row in rows],
     )
 
 
@@ -130,9 +131,16 @@ def index():
             "SELECT DISTINCT show_id FROM recordings WHERE status IN ('queued', 'recording')"
         )
     }
+    recording_show_ids = {
+        row["show_id"]
+        for row in query(
+            "SELECT DISTINCT show_id FROM recordings WHERE status = 'recording'"
+        )
+    }
     now_local = current_local_time()
     for show in shows:
         show["schedule_description"] = schedule_description(show)
+        show["is_recording"] = show["id"] in recording_show_ids
         show["next_start"], show["is_current"] = next_show_start(show, now_local)
     shows.sort(
         key=lambda show: (
