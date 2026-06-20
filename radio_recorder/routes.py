@@ -27,6 +27,14 @@ from .processing import record_show
 
 bp = Blueprint("main", __name__)
 PAGE_SIZES = (10, 25, 100)
+RECORDING_STATUSES = (
+    ("queued", "Queued"),
+    ("recording", "Recording"),
+    ("ready", "Ready"),
+    ("delivery_pending", "Delivery pending"),
+    ("complete", "Complete"),
+    ("failed", "Failed"),
+)
 
 
 def current_local_time() -> datetime:
@@ -139,21 +147,35 @@ def index():
         )
     )
 
+    recording_status_filter = request.args.get("recording_status", "")
+    valid_recording_statuses = tuple(value for value, _ in RECORDING_STATUSES)
+    if recording_status_filter not in valid_recording_statuses:
+        recording_status_filter = ""
+    status_placeholders = ", ".join("?" for _ in valid_recording_statuses)
+    recording_where = f"WHERE r.status IN ({status_placeholders})"
+    recording_params: tuple = valid_recording_statuses
+    if recording_status_filter:
+        recording_where += " AND r.status = ?"
+        recording_params += (recording_status_filter,)
     recording_total = query(
-        "SELECT COUNT(*) AS count FROM recordings", one=True
+        f"SELECT COUNT(*) AS count FROM recordings r {recording_where}",
+        recording_params,
+        one=True,
     )["count"]
     recording_pagination = pagination_params(
         "recordings", recording_total, default_per_page=25
     )
     recordings = [
         dict(row) for row in query(
-            """
+            f"""
             SELECT r.*, s.name AS show_name FROM recordings r
             JOIN shows s ON s.id=r.show_id
+            {recording_where}
             ORDER BY r.created_at DESC
             LIMIT ? OFFSET ?
             """,
-            (recording_pagination["per_page"], recording_pagination["offset"]),
+            recording_params
+            + (recording_pagination["per_page"], recording_pagination["offset"]),
         )
     ]
     for recording in recordings:
@@ -167,6 +189,8 @@ def index():
         shows=shows,
         recordings=recordings,
         recording_pagination=recording_pagination,
+        recording_status_filter=recording_status_filter,
+        recording_statuses=RECORDING_STATUSES,
         page_sizes=PAGE_SIZES,
         active_tab=active_tab,
         station_filter=station_filter,

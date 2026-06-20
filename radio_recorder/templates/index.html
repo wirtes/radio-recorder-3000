@@ -82,12 +82,13 @@
   <div class="list-controls">
     <form method="get" action="{{ url_for('main.index') }}#recording-log">
       <input type="hidden" name="tab" value="recordings">
+      <label>Status<select name="recording_status" onchange="this.form.submit()"><option value="">All statuses</option>{% for value, label in recording_statuses %}<option value="{{ value }}" {{ 'selected' if recording_status_filter == value else '' }}>{{ label }}</option>{% endfor %}</select></label>
       <label>Rows<select name="recordings_per_page" onchange="this.form.submit()">{% for size in page_sizes %}<option value="{{ size }}" {{ 'selected' if recording_pagination.per_page == size else '' }}>{{ size }}</option>{% endfor %}</select></label>
     </form>
     <nav class="pagination" aria-label="Recording log pages">
-      {% if recording_pagination.page > 1 %}<a href="{{ url_for('main.index', tab='recordings', recordings_page=recording_pagination.page-1, recordings_per_page=recording_pagination.per_page) }}#recording-log">Previous</a>{% endif %}
+      {% if recording_pagination.page > 1 %}<a href="{{ url_for('main.index', tab='recordings', recordings_page=recording_pagination.page-1, recordings_per_page=recording_pagination.per_page, recording_status=recording_status_filter) }}#recording-log">Previous</a>{% endif %}
       <span>Page {{ recording_pagination.page }} of {{ recording_pagination.pages }}</span>
-      {% if recording_pagination.page < recording_pagination.pages %}<a href="{{ url_for('main.index', tab='recordings', recordings_page=recording_pagination.page+1, recordings_per_page=recording_pagination.per_page) }}#recording-log">Next</a>{% endif %}
+      {% if recording_pagination.page < recording_pagination.pages %}<a href="{{ url_for('main.index', tab='recordings', recordings_page=recording_pagination.page+1, recordings_per_page=recording_pagination.per_page, recording_status=recording_status_filter) }}#recording-log">Next</a>{% endif %}
     </nav>
   </div>
 </section>

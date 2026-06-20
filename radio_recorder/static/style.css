@@ -104,7 +104,7 @@ button.danger { color:#a12b1d; }
 .show-main { flex:1; }
 .show-list form { display:block; }
 .list-controls { display:flex; justify-content:space-between; align-items:center; gap:16px; padding-top:18px; }
-.list-controls form { display:block; }
+.list-controls form { display:flex; align-items:center; gap:14px; }
 .list-controls label { display:flex; align-items:center; gap:8px; }
 .list-controls select { width:auto; padding:7px 28px 7px 9px; }
 .pagination { display:flex; align-items:center; gap:12px; font-size:12px; }

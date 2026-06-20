@@ -1,8 +1,10 @@
 from __future__ import annotations
 
 import sqlite3
+import subprocess
 from datetime import datetime, timezone
 from io import BytesIO
+from pathlib import Path
 
 from PIL import Image
 
@@ -14,7 +16,12 @@ from radio_recorder.playlist import (
     format_playlist,
     parse_account_url,
 )
-from radio_recorder.processing import add_id3_tags, build_destination, track_number
+from radio_recorder.processing import (
+    add_id3_tags,
+    build_destination,
+    capture_stream,
+    track_number,
+)
 from radio_recorder.processing import deliver_recording
 from radio_recorder.scheduler import runs_on_weekday
 from mutagen.id3 import ID3
@@ -175,6 +182,40 @@ def test_recording_status_lamp(tmp_path):
         "recording": True,
         "shows": ["Live Show"],
     }
+
+
+def test_capture_stream_reconnects_and_concatenates_segments(tmp_path, monkeypatch):
+    clock = {"now": 0.0}
+    capture_commands = []
+
+    def fake_run(command, **kwargs):
+        output = Path(command[-1])
+        if "-f" in command and "concat" in command:
+            output.write_bytes(b"first-second")
+            return subprocess.CompletedProcess(command, 0)
+        capture_commands.append(command)
+        output.write_bytes(b"first" if len(capture_commands) == 1 else b"second")
+        clock["now"] += 4
+        return subprocess.CompletedProcess(
+            command, 1 if len(capture_commands) == 1 else 0
+        )
+
+    monkeypatch.setattr(
+        "radio_recorder.processing.time.monotonic", lambda: clock["now"]
+    )
+    monkeypatch.setattr(
+        "radio_recorder.processing.time.sleep",
+        lambda seconds: clock.__setitem__("now", clock["now"] + seconds),
+    )
+    monkeypatch.setattr("radio_recorder.processing.subprocess.run", fake_run)
+
+    result = capture_stream("https://example.test/live", 8, tmp_path)
+
+    assert result.read_bytes() == b"first-second"
+    assert len(capture_commands) == 2
+    assert "-reconnect" in capture_commands[0]
+    assert capture_commands[0][capture_commands[0].index("-t") + 1] == "8"
+    assert capture_commands[1][capture_commands[1].index("-t") + 1] == "2"
 
 
 def test_delivery_without_playlist_sidecar(tmp_path):
@@ -563,6 +604,54 @@ def test_paginated_lists_and_recording_time_format(tmp_path, monkeypatch):
     expanded = client.get("/?tab=recordings&recordings_per_page=100")
     assert expanded.data.count(b"<tr><td>Show") == 30
     assert b'<option value="100" selected>' in expanded.data
+
+
+def test_recording_log_filters_by_valid_status(tmp_path):
+    app = make_app(tmp_path)
+    client = app.test_client()
+    client.post("/stations", data={
+        "station_id": "KVCU",
+        "stream_url": "https://example.test/live",
+    })
+    client.post("/shows", data={
+        "station_id": "1",
+        "name": "Status Show",
+        "duration_minutes": "62",
+        "frequency": "daily",
+        "start_time": "10:00",
+    })
+    statuses = [
+        "queued", "recording", "ready", "delivery_pending",
+        "complete", "failed", "unexpected",
+    ]
+    with app.app_context():
+        for index, status in enumerate(statuses):
+            timestamp = f"2026-06-{index + 1:02d}T16:00:00+00:00"
+            execute(
+                """
+                INSERT INTO recordings(
+                    show_id, scheduled_at, status, error, created_at, updated_at
+                ) VALUES(1, ?, ?, ?, ?, ?)
+                """,
+                (
+                    timestamp,
+                    status,
+                    "ROGUE STATUS" if status == "unexpected" else None,
+                    timestamp,
+                    timestamp,
+                ),
+            )
+
+    all_statuses = client.get("/?tab=recordings")
+    for status in statuses[:-1]:
+        assert f'<option value="{status}"'.encode() in all_statuses.data
+    assert b'<option value="unexpected"' not in all_statuses.data
+    assert b"ROGUE STATUS" not in all_statuses.data
+
+    failed = client.get("/?tab=recordings&recording_status=failed")
+    assert failed.data.count(b"<tr><td>Status Show") == 1
+    assert b'<span class="pill failed">failed</span>' in failed.data
+    assert b'<option value="failed" selected>' in failed.data
 
 
 def test_navigation_and_new_defaults(tmp_path):

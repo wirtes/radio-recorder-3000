@@ -4,6 +4,8 @@ import mimetypes
 import os
 import shutil
 import subprocess
+import time
+from math import ceil
 from datetime import datetime
 from pathlib import Path
 from zoneinfo import ZoneInfo
@@ -28,6 +30,78 @@ from mutagen.id3 import (
 
 from .db import execute, now_iso, query
 from .playlist import fetch_playlist
+
+
+def _concat_file_path(path: Path) -> str:
+    return str(path.resolve()).replace("'", "'\\''")
+
+
+def capture_stream(
+    stream_url: str,
+    duration_seconds: int,
+    work_dir: Path,
+) -> Path:
+    started_at = time.monotonic()
+    deadline = started_at + duration_seconds
+    segments: list[Path] = []
+    attempt = 0
+
+    while time.monotonic() < deadline:
+        remaining = max(1, ceil(deadline - time.monotonic()))
+        segment = work_dir / f"capture-{attempt:03d}.mp3"
+        attempt += 1
+        try:
+            result = subprocess.run(
+                [
+                    "ffmpeg", "-hide_banner", "-loglevel", "error", "-y",
+                    "-reconnect", "1",
+                    "-reconnect_streamed", "1",
+                    "-reconnect_delay_max", "5",
+                    "-rw_timeout", "15000000",
+                    "-i", stream_url,
+                    "-t", str(remaining),
+                    "-vn", "-c:a", "libmp3lame", "-q:a", "2",
+                    str(segment),
+                ],
+                check=False,
+                timeout=remaining + 20,
+            )
+        except subprocess.TimeoutExpired:
+            result = None
+
+        if segment.exists() and segment.stat().st_size:
+            segments.append(segment)
+        if time.monotonic() >= deadline:
+            break
+        if result is None or result.returncode != 0 or not segment.exists():
+            time.sleep(min(2, max(0, deadline - time.monotonic())))
+        else:
+            # A stream can end cleanly before the requested duration.
+            time.sleep(min(1, max(0, deadline - time.monotonic())))
+
+    if not segments:
+        raise RuntimeError("No audio was captured from the stream.")
+
+    raw_path = work_dir / "capture.mp3"
+    if len(segments) == 1:
+        segments[0].replace(raw_path)
+        return raw_path
+
+    concat_list = work_dir / "segments.txt"
+    concat_list.write_text(
+        "".join(f"file '{_concat_file_path(segment)}'\n" for segment in segments),
+        encoding="utf-8",
+    )
+    subprocess.run(
+        [
+            "ffmpeg", "-hide_banner", "-loglevel", "error", "-y",
+            "-f", "concat", "-safe", "0", "-i", str(concat_list),
+            "-c", "copy", str(raw_path),
+        ],
+        check=True,
+        timeout=max(30, duration_seconds),
+    )
+    return raw_path
 
 
 def track_number(when: datetime, frequency: str) -> int:
@@ -109,20 +183,13 @@ def record_show(app, recording_id: int) -> None:
         work_dir = Path(current_app.config["DATA_DIR"]) / "work" / str(recording_id)
         work_dir.mkdir(parents=True, exist_ok=True)
         safe_name = row["name"].replace("/", "-").replace("\\", "-").strip(". ")
-        raw_path = work_dir / "capture.mp3"
         mp3_path = work_dir / f"{local_when:%Y-%m-%d} {safe_name}.mp3"
         playlist_path: Path | None = None
         try:
-            subprocess.run(
-                [
-                    "ffmpeg", "-hide_banner", "-loglevel", "error", "-y",
-                    "-i", row["stream_url"],
-                    "-t", str(row["recording_minutes"] * 60),
-                    "-vn", "-c:a", "libmp3lame", "-q:a", "2",
-                    str(raw_path),
-                ],
-                check=True,
-                timeout=(row["recording_minutes"] + 5) * 60,
+            raw_path = capture_stream(
+                row["stream_url"],
+                row["recording_minutes"] * 60,
+                work_dir,
             )
             raw_path.replace(mp3_path)
 

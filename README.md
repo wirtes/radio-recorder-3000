@@ -32,7 +32,9 @@ python app.py
 
 1. The scheduler starts a configured stream at its daily or weekly local time.
    Shows can also run every Monday through Friday.
-2. `ffmpeg` records and encodes the stream as MP3 in local working storage.
+2. `ffmpeg` records and encodes the stream as MP3 in local working storage. If
+   the stream drops, recording reconnects until the scheduled recording window
+   ends and concatenates the available audio segments into the final MP3.
 3. If configured, the station's Mastodon account is queried for posts in the
    show's time window. The first text line of each post becomes the playlist.
 4. ID3v2.3 title, artist, album artist, album, track, year, lyrics, description,
